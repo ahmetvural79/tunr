@@ -1,0 +1,35 @@
+# CODEOWNERS
+# 
+# Hangi dosya değişirse kim review etmeli?
+# Bu dosya sayesinde PR açıldığında otomatik reviewer atanır.
+# Yoksa "kimin işi bu?" sorusuyla 3 gün geçer.
+#
+# Syntax: pattern  @kullanıcı-adı veya @organizasyon/takım
+
+# Güvenlik kritik alanlar — çok dikkatli olunmalı
+/internal/auth/           @tunr-dev/security-team
+/SECURITY.md              @tunr-dev/security-team
+/.github/workflows/       @tunr-dev/security-team
+
+# Core tunnel logic
+/internal/tunnel/         @tunr-dev/core-team
+/internal/proxy/          @tunr-dev/core-team
+
+# Config yönetimi — breaking change riski yüksek
+/internal/config/         @tunr-dev/core-team
+
+# CLI komutları
+/cmd/                     @tunr-dev/core-team
+
+# CI/CD değişiklikleri de önemli
+/.goreleaser.yaml         @tunr-dev/core-team
+/.github/                 @tunr-dev/core-team
+
+# Doküman — daha hafif ama review yine de iyidir
+/README.md                @tunr-dev/docs-team
+/landing/                 @tunr-dev/design-team
+
+# go.mod / go.sum — dependency değişikliği
+# (bilen biri baksın lütfen)
+/go.mod                   @tunr-dev/security-team
+/go.sum                   @tunr-dev/security-team

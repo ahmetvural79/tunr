@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>tunr inspector</title>
+    <style>
+        :root {
+            --bg: #080b14;
+            --surface: #0d1220;
+            --elevated: #131929;
+            --card: #0f1623;
+            --cyan: #00d4ff;
+            --cyan-dim: rgba(0, 212, 255, 0.12);
+            --green: #10b981;
+            --red: #f87171;
+            --yellow: #fbbf24;
+            --purple: #c084fc;
+            --blue: #60a5fa;
+            --text: #f1f5f9;
+            --text-dim: #475569;
+            --text-sec: #94a3b8;
+            --border: rgba(255, 255, 255, 0.07);
+            --border-accent: rgba(0, 212, 255, 0.35);
+            --font-sans: 'Inter', system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── HEADER ── */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            gap: 12px;
+        }
+
+        .logo {
+            font-size: 15px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .header-center {
+            display: flex;
+            gap: 4px;
+        }
+
+        .nav-tab {
+            padding: 6px 14px;
+            font-size: 12px;
+            color: var(--text-sec);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.15s;
+            text-decoration: none;
+        }
+
+        .nav-tab.active,
+        .nav-tab:hover {
+            background: var(--elevated);
+            color: var(--text);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .live-badge {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            color: var(--text-sec);
+            background: var(--elevated);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 3px 10px;
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--green);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: .3
+            }
+        }
+
+        .btn-xs {
+            padding: 4px 10px;
+            font-size: 11px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: var(--font-sans);
+            border: 1px solid var(--border);
+            background: var(--elevated);
+            color: var(--text-sec);
+            transition: 0.15s;
+        }
+
+        .btn-xs:hover {
+            color: var(--text);
+            border-color: var(--border-accent);
+        }
+
+        .btn-xs.danger:hover {
+            color: var(--red);
+            border-color: rgba(248, 113, 113, 0.4);
+        }
+
+        /* ── MAIN SPLIT VIEW ── */
+        .main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ── LEFT: REQUEST LIST ── */
+        .req-list-panel {
+            width: 360px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border);
+        }
+
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .search-box {
+            flex: 1;
+            background: var(--elevated);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 12px;
+            color: var(--text);
+            font-family: var(--font-mono);
+            outline: none;
+        }
+
+        .search-box:focus {
+            border-color: var(--border-accent);
+        }
+
+        .req-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .req-item {
+            padding: 10px 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            cursor: pointer;
+            transition: background 0.1s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .req-item:hover {
+            background: var(--elevated);
+        }
+
+        .req-item.selected {
+            background: var(--elevated);
+            border-left: 2px solid var(--cyan);
+            padding-left: 12px;
+        }
+
+        .req-item.new {
+            animation: slide-in 0.3s ease-out;
+        }
+
+        @keyframes slide-in {
+            from {
+                opacity: 0;
+                transform: translateX(-8px)
+            }
+
+            to {
+                opacity: 1;
+                transform: none
+            }
+        }
+
+        .method-badge {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            flex-shrink: 0;
+            min-width: 44px;
+            text-align: center;
+        }
+
+        .M-GET {
+            background: rgba(16, 185, 129, .15);
+            color: var(--green);
+        }
+
+        .M-POST {
+            background: rgba(0, 212, 255, .12);
+            color: var(--cyan);
+        }
+
+        .M-PUT {
+            background: rgba(251, 191, 36, .12);
+            color: var(--yellow);
+        }
+
+        .M-DELETE {
+            background: rgba(248, 113, 113, .12);
+            color: var(--red);
+        }
+
+        .M-PATCH {
+            background: rgba(192, 132, 252, .12);
+            color: var(--purple);
+        }
+
+        .M-HEAD {
+            background: rgba(96, 165, 250, .12);
+            color: var(--blue);
+        }
+
+        .M-OTHER {
+            background: var(--elevated);
+            color: var(--text-sec);
+        }
+
+        .req-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .req-path {
+            font-size: 12px;
+            font-family: var(--font-mono);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text);
+        }
+
+        .req-meta {
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-top: 2px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .status-chip {
+            font-size: 10px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .s-2xx {
+            color: var(--green);
+        }
+
+        .s-3xx {
+            color: var(--blue);
+        }
+
+        .s-4xx {
+            color: var(--yellow);
+        }
+
+        .s-5xx {
+            color: var(--red);
+        }
+
+        /* ── RIGHT: DETAIL PANEL ── */
+        .detail-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .detail-empty {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-dim);
+            gap: 10px;
+        }
+
+        .detail-empty .icon {
+            font-size: 48px;
+            opacity: 0.3;
+        }
+
+        .detail-header {
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .detail-method {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .detail-url {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--text-sec);
+            flex: 1;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .detail-status {
+            font-size: 20px;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+
+        .detail-dur {
+            font-size: 11px;
+            color: var(--text-dim);
+            flex-shrink: 0;
+        }
+
+        .detail-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .btn-action {
+            padding: 4px 12px;
+            font-size: 11px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: var(--font-sans);
+            border: none;
+            font-weight: 600;
+            transition: 0.15s;
+        }
+
+        .btn-replay {
+            background: var(--cyan-dim);
+            color: var(--cyan);
+            border: 1px solid rgba(0, 212, 255, .3);
+        }
+
+        .btn-replay:hover {
+            background: rgba(0, 212, 255, .2);
+        }
+
+        .btn-curl {
+            background: var(--elevated);
+            color: var(--text-sec);
+            border: 1px solid var(--border);
+        }
+
+        .btn-curl:hover {
+            color: var(--text);
+        }
+
+        .detail-tabs {
+            display: flex;
+            gap: 2px;
+            padding: 8px 20px 0;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .detail-tab {
+            padding: 6px 14px;
+            font-size: 12px;
+            color: var(--text-sec);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: 0.15s;
+        }
+
+        .detail-tab.active {
+            color: var(--cyan);
+            border-bottom-color: var(--cyan);
+        }
+
+        .detail-pane {
+            display: none;
+            flex: 1;
+            overflow: auto;
+        }
+
+        .detail-pane.active {
+            display: block;
+        }
+
+        /* Headers table */
+        .headers-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        .headers-table td {
+            padding: 6px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            vertical-align: top;
+        }
+
+        .headers-table td:first-child {
+            color: var(--text-sec);
+            white-space: nowrap;
+            padding-right: 8px;
+            width: 40%;
+        }
+
+        .headers-table tr:hover td {
+            background: var(--elevated);
+        }
+
+        .redacted {
+            color: var(--red);
+            font-style: italic;
+        }
+
+        /* Body viewer */
+        .body-viewer {
+            padding: 16px 20px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: var(--text-sec);
+        }
+
+        .body-empty {
+            padding: 20px;
+            color: var(--text-dim);
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .body-size {
+            font-size: 10px;
+            color: var(--text-dim);
+            padding: 6px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* JSON syntax highlight — CSS only ile temel renkler */
+        .json-key {
+            color: var(--cyan);
+        }
+
+        .json-string {
+            color: var(--green);
+        }
+
+        .json-number {
+            color: var(--yellow);
+        }
+
+        .json-bool {
+            color: var(--purple);
+        }
+
+        .json-null {
+            color: var(--red);
+        }
+
+        /* Curl output */
+        .curl-box {
+            background: var(--elevated);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 20px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            white-space: pre-wrap;
+            color: var(--text-sec);
+            position: relative;
+        }
+
+        .btn-copy {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 3px 8px;
+            font-size: 10px;
+            border-radius: 4px;
+            background: var(--elevated);
+            border: 1px solid var(--border);
+            color: var(--text-sec);
+            cursor: pointer;
+        }
+
+        .btn-copy:hover {
+            color: var(--cyan);
+        }
+
+        /* Empty state */
+        .empty-list {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-dim);
+            font-size: 12px;
+            line-height: 2;
+        }
+
+        .empty-list code {
+            color: var(--cyan);
+            font-family: var(--font-mono);
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 2px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+        rel="stylesheet" />
+</head>
+
+<body>
+
+    <div class="header">
+        <div class="logo">🔍 <strong>tunr</strong> inspector</div>
+        <div class="header-center">
+            <a class="nav-tab" href="/">← Dashboard</a>
+            <span class="nav-tab active">HTTP Inspector</span>
+        </div>
+        <div class="header-right">
+            <div class="live-badge"><span class="dot" id="live-dot"></span><span id="status-txt">Bağlanıyor...</span>
+            </div>
+            <button class="btn-xs danger" onclick="clearAll()">🗑 Temizle</button>
+            <button class="btn-xs" id="btn-pause" onclick="togglePause()">⏸ Duraklat</button>
+            <span id="req-count" style="font-size:12px;color:var(--text-dim)">0 istek</span>
+        </div>
+    </div>
+
+    <div class="main">
+
+        <!-- SOL: İSTEK LİSTESİ -->
+        <div class="req-list-panel">
+            <div class="toolbar">
+                <input class="search-box" id="search" placeholder="Filtrele: path, method, status..." />
+            </div>
+            <div class="req-list" id="req-list">
+                <div class="empty-list">
+                    İstek bekleniyor...<br />
+                    <code>tunr share --port 3000</code><br />
+                    ile bir tunnel başlatın.
+                </div>
+            </div>
+        </div>
+
+        <!-- SAĞ: DETAY PANELİ -->
+        <div class="detail-panel" id="detail-panel">
+            <div class="detail-empty" id="detail-empty">
+                <div class="icon">← </div>
+                <div style="font-size:14px">Detay görmek için bir istek seçin</div>
+                <div style="font-size:12px;color:var(--text-dim)">Header, body ve timing bilgileri burada görünür</div>
+            </div>
+            <div id="detail-content" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+                <!-- Detail Header -->
+                <div class="detail-header">
+                    <span class="detail-method" id="d-method"></span>
+                    <span class="detail-url" id="d-url"></span>
+                    <span class="detail-status" id="d-status"></span>
+                    <span class="detail-dur" id="d-dur"></span>
+                    <div class="detail-actions">
+                        <button class="btn-action btn-replay" onclick="replayRequest()">↩ Replay</button>
+                        <button class="btn-action btn-curl" onclick="copyCurl()">curl ↗</button>
+                    </div>
+                </div>
+
+                <!-- Detail Tabs -->
+                <div class="detail-tabs">
+                    <span class="detail-tab active" data-pane="req-headers" onclick="switchPane(this)">İstek
+                        Headers</span>
+                    <span class="detail-tab" data-pane="req-body" onclick="switchPane(this)">İstek Body</span>
+                    <span class="detail-tab" data-pane="resp-headers" onclick="switchPane(this)">Yanıt Headers</span>
+                    <span class="detail-tab" data-pane="resp-body" onclick="switchPane(this)">Yanıt Body</span>
+                    <span class="detail-tab" data-pane="curl-export" onclick="switchPane(this)">curl</span>
+                </div>
+
+                <!-- Panes -->
+                <div class="detail-pane active" id="pane-req-headers">
+                    <table class="headers-table" id="tbl-req-headers"></table>
+                </div>
+                <div class="detail-pane" id="pane-req-body">
+                    <div class="body-size" id="req-body-size"></div>
+                    <div class="body-viewer" id="req-body-content"></div>
+                </div>
+                <div class="detail-pane" id="pane-resp-headers">
+                    <table class="headers-table" id="tbl-resp-headers"></table>
+                </div>
+                <div class="detail-pane" id="pane-resp-body">
+                    <div class="body-size" id="resp-body-size"></div>
+                    <div class="body-viewer" id="resp-body-content"></div>
+                </div>
+                <div class="detail-pane" id="pane-curl-export">
+                    <div class="curl-box">
+                        <button class="btn-copy" onclick="copyCurlBox()">Kopyala</button>
+                        <code id="curl-content"></code>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── INSPECTOR JS ──
+        // Gerçek zamanlı HTTP inspector.
+        // Seçilen isteğin header'larını, body'sini ve curl karşılığını gösterir.
+
+        let allRequests = [];   // tüm yakalanan istekler
+        let selectedID = null;  // şu an seçili istek ID'si
+        let paused = false;
+        let ws = null;
+
+        // API'den mevcut istekleri yükle
+        async function loadRequests() {
+            try {
+                const r = await fetch('/api/v1/requests');
+                const data = await r.json();
+                allRequests = data.requests || [];
+                renderList();
+            } catch (e) {
+                console.warn('İstekler yüklenemedi:', e);
+            }
+        }
+
+        // WebSocket ile canlı güncelleme
+        function connectWS() {
+            const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${proto}//${location.host}/api/ws/logs`);
+            ws.onopen = () => updateStatus('Canlı', true);
+            ws.onmessage = (e) => {
+                if (paused) return;
+                try {
+                    const entry = JSON.parse(e.data);
+                    // WebUI log entry → inspector request format
+                    addRequest(entry);
+                } catch { }
+            };
+            ws.onclose = () => {
+                updateStatus('Yeniden bağlanıyor...', false);
+                setTimeout(connectWS, 2000);
+            };
+            ws.onerror = () => updateStatus('Bağlantı hatası', false);
+        }
+
+        function updateStatus(msg, ok) {
+            document.getElementById('status-txt').textContent = msg;
+            document.getElementById('live-dot').style.background = ok ? 'var(--green)' : 'var(--yellow)';
+        }
+
+        // Yeni istek ekle / mevcut istekleri render et
+        function addRequest(entry) {
+            // Normalleştir
+            const req = {
+                id: entry.id || generateID(),
+                method: entry.method || 'GET',
+                path: entry.path || '/',
+                status_code: entry.status_code || 0,
+                duration_ms: entry.duration_ms || 0,
+                timestamp: entry.time || new Date().toISOString(),
+                req_headers: entry.req_headers || {},
+                resp_headers: entry.resp_headers || {},
+                req_body: entry.req_body || '',
+                resp_body: entry.resp_body || '',
+                is_json: entry.is_json || false,
+            };
+
+            allRequests.unshift(req); // en başa ekle (yeniden eskiye)
+            if (allRequests.length > 1000) allRequests.pop();
+
+            renderList();
+        }
+
+        function renderList() {
+            const filter = document.getElementById('search').value.toLowerCase();
+            const filtered = allRequests.filter(r =>
+                !filter ||
+                r.path?.toLowerCase().includes(filter) ||
+                r.method?.toLowerCase().includes(filter) ||
+                String(r.status_code).includes(filter)
+            );
+
+            const list = document.getElementById('req-list');
+            document.getElementById('req-count').textContent = `${filtered.length} istek`;
+
+            if (!filtered.length) {
+                list.innerHTML = '<div class="empty-list">Eşleşen istek yok.</div>';
+                return;
+            }
+
+            list.innerHTML = filtered.map(req => {
+                const cls = methodClass(req.method);
+                const sCls = statusClass(req.status_code);
+                const time = new Date(req.timestamp).toLocaleTimeString('tr-TR');
+                const dur = `${req.duration_ms}ms`;
+
+                return `
+        <div class="req-item${req.id === selectedID ? ' selected' : ''}"
+             onclick="selectRequest('${req.id}')" id="item-${req.id}">
+          <span class="method-badge ${cls}">${req.method}</span>
+          <div class="req-info">
+            <div class="req-path" title="${req.path}">${req.path}</div>
+            <div class="req-meta">
+              <span>${time}</span>
+              <span>${dur}</span>
+            </div>
+          </div>
+          <span class="status-chip ${sCls}">${req.status_code || '—'}</span>
+        </div>
+      `;
+            }).join('');
+        }
+
+        // İstek detay paneli aç
+        function selectRequest(id) {
+            selectedID = id;
+            const req = allRequests.find(r => r.id === id);
+            if (!req) return;
+
+            // Sol paneli güncelle
+            document.querySelectorAll('.req-item').forEach(el => el.classList.remove('selected'));
+            const item = document.getElementById(`item-${id}`);
+            if (item) item.classList.add('selected');
+
+            // Detay paneli göster
+            document.getElementById('detail-empty').style.display = 'none';
+            const dc = document.getElementById('detail-content');
+            dc.style.display = 'flex';
+
+            // Header bar
+            const sCls = statusClass(req.status_code);
+            document.getElementById('d-method').textContent = req.method;
+            document.getElementById('d-method').className = `detail-method method-badge ${methodClass(req.method)}`;
+            document.getElementById('d-url').textContent = req.path;
+            document.getElementById('d-status').textContent = req.status_code || '—';
+            document.getElementById('d-status').className = `detail-status ${sCls}`;
+            document.getElementById('d-dur').textContent = `${req.duration_ms}ms`;
+
+            // Request headers
+            renderHeadersTable('tbl-req-headers', req.req_headers);
+
+            // Response headers
+            renderHeadersTable('tbl-resp-headers', req.resp_headers);
+
+            // Request body
+            renderBody('req-body-content', 'req-body-size', req.req_body, req.req_body_len, req.is_json);
+
+            // Response body
+            renderBody('resp-body-content', 'resp-body-size', req.resp_body, req.resp_body_len, req.is_json);
+
+            // curl export (fetch'le al)
+            fetchCurl(id);
+        }
+
+        function renderHeadersTable(tableId, headers) {
+            const tbl = document.getElementById(tableId);
+            if (!headers || !Object.keys(headers).length) {
+                tbl.parentElement.innerHTML = '<div class="body-empty">Header yok</div>';
+                return;
+            }
+            tbl.innerHTML = Object.entries(headers).map(([k, v]) => {
+                const isRedacted = v === '[REDACTED]';
+                return `
+        <tr>
+          <td>${k}</td>
+          <td class="${isRedacted ? 'redacted' : ''}">${isRedacted ? '🔒 gizlendi' : escapeHTML(v)}</td>
+        </tr>
+      `;
+            }).join('');
+        }
+
+        function renderBody(contentId, sizeId, body, bodyLen, isJSON) {
+            const sizeEl = document.getElementById(sizeId);
+            const contentEl = document.getElementById(contentId);
+
+            if (!body || body.trim() === '') {
+                contentEl.innerHTML = '<div class="body-empty" style="color:var(--text-dim)">Body boş</div>';
+                sizeEl.textContent = '';
+                return;
+            }
+
+            const bytes = bodyLen || body.length;
+            sizeEl.textContent = `${formatBytes(bytes)}`;
+
+            if (isJSON) {
+                try {
+                    const parsed = JSON.parse(body);
+                    const pretty = JSON.stringify(parsed, null, 2);
+                    contentEl.innerHTML = syntaxHighlightJSON(pretty);
+                    return;
+                } catch { }
+            }
+
+            contentEl.textContent = body;
+        }
+
+        async function fetchCurl(id) {
+            try {
+                const r = await fetch(`/api/v1/requests/${id}?action=curl`, { method: 'POST' });
+                const text = await r.text();
+                document.getElementById('curl-content').textContent = text;
+            } catch (e) {
+                document.getElementById('curl-content').textContent = '# curl export alınamadı';
+            }
+        }
+
+        function switchPane(el) {
+            document.querySelectorAll('.detail-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.detail-pane').forEach(p => p.classList.remove('active'));
+            el.classList.add('active');
+            document.getElementById(`pane-${el.dataset.pane}`).classList.add('active');
+        }
+
+        async function replayRequest() {
+            if (!selectedID) return;
+            const btn = document.querySelector('.btn-replay');
+            btn.textContent = '↩ Gönderiliyor...';
+            btn.disabled = true;
+            try {
+                const r = await fetch(`/api/v1/requests/${selectedID}?action=replay`, { method: 'POST' });
+                const data = await r.json();
+                btn.textContent = `↩ ${data.status_code} (${data.duration_ms}ms)`;
+            } catch (e) {
+                btn.textContent = '↩ Hata!';
+            }
+            setTimeout(() => { btn.textContent = '↩ Replay'; btn.disabled = false; }, 2000);
+        }
+
+        function copyCurl() {
+            // curl paneline geç
+            document.querySelectorAll('.detail-tab')[4]?.click();
+        }
+
+        function copyCurlBox() {
+            const text = document.getElementById('curl-content').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = document.querySelector('.btn-copy');
+                btn.textContent = '✓ Kopyalandı';
+                setTimeout(() => btn.textContent = 'Kopyala', 1500);
+            });
+        }
+
+        async function clearAll() {
+            await fetch('/api/v1/requests/clear', { method: 'DELETE' });
+            allRequests = [];
+            selectedID = null;
+            document.getElementById('detail-empty').style.display = '';
+            document.getElementById('detail-content').style.display = 'none';
+            renderList();
+        }
+
+        function togglePause() {
+            paused = !paused;
+            const btn = document.getElementById('btn-pause');
+            btn.textContent = paused ? '▶ Devam' : '⏸ Duraklat';
+            btn.style.color = paused ? 'var(--yellow)' : '';
+        }
+
+        // Filtre
+        let filterTimer;
+        document.getElementById('search').addEventListener('input', () => {
+            clearTimeout(filterTimer);
+            filterTimer = setTimeout(renderList, 150);
+        });
+
+        // ── HELPERS ──
+        function methodClass(m) {
+            const map = { GET: 'M-GET', POST: 'M-POST', PUT: 'M-PUT', DELETE: 'M-DELETE', PATCH: 'M-PATCH', HEAD: 'M-HEAD' };
+            return map[m] || 'M-OTHER';
+        }
+
+        function statusClass(s) {
+            if (s < 300) return 's-2xx';
+            if (s < 400) return 's-3xx';
+            if (s < 500) return 's-4xx';
+            return 's-5xx';
+        }
+
+        function formatBytes(n) {
+            if (n < 1024) return `${n} B`;
+            if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+            return `${(n / 1024 / 1024).toFixed(1)} MB`;
+        }
+
+        function escapeHTML(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function generateID() {
+            return Math.random().toString(36).slice(2, 10);
+        }
+
+        // JSON syntax highlight — regex tabanlı, basit ama işe yarar
+        function syntaxHighlightJSON(json) {
+            return escapeHTML(json).replace(
+                /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+                (match) => {
+                    let cls = 'json-number';
+                    if (/^"/.test(match)) {
+                        cls = /:$/.test(match) ? 'json-key' : 'json-string';
+                    } else if (/true|false/.test(match)) {
+                        cls = 'json-bool';
+                    } else if (/null/.test(match)) {
+                        cls = 'json-null';
+                    }
+                    return `<span class="${cls}">${match}</span>`;
+                }
+            );
+        }
+
+        // Başlat
+        loadRequests();
+        connectWS();
+    </script>
+</body>
+
+</html>

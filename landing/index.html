@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>tunr — Expose localhost to the internet</title>
+    <meta name="description"
+        content="Secure, instant tunnels for your local development server. Built for modern freelancers and vibecoders." />
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+    <!-- Sticky Navbar -->
+    <div class="navbar-wrapper">
+        <div class="container">
+            <nav>
+                <a href="/" class="logo">
+                    <span class="logo-icon">🚇</span> tunr.sh
+                </a>
+                <div class="nav-links">
+                    <a href="#features" class="nav-item">Features</a>
+                    <a href="docs.html" class="nav-item">Documentation</a>
+                    <a href="https://github.com/tunr-dev/tunr" target="_blank" class="nav-item">GitHub</a>
+                </div>
+                <div class="nav-actions">
+                    <a href="https://app.tunr.sh/login" class="btn btn-ghost">Log in</a>
+                    <a href="https://app.tunr.sh/login" class="btn btn-primary">Dashboard</a>
+                </div>
+            </nav>
+        </div>
+    </div>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="hero container">
+            <div class="hero-badge">
+                <div class="hero-badge-pulse"></div>
+                Tunr v1.0 is now live for macOS, Linux, and Windows
+            </div>
+
+            <h1>Expose your local server <br />in 3 seconds.</h1>
+            <p>Secure tunnels, automatic HTTPS, and zero configuration. The developer-first alternative to ngrok, packed
+                with superpowers for client demos.</p>
+
+            <div class="hero-actions">
+                <a href="#install" class="btn btn-primary" style="padding: 12px 24px; font-size: 15px;">Install CLI</a>
+                <a href="docs.html" class="btn btn-secondary" style="padding: 12px 24px; font-size: 15px;">Read the
+                    Docs</a>
+            </div>
+
+            <!-- Hero Terminal -->
+            <div class="terminal-window">
+                <div class="terminal-header">
+                    <div class="terminal-dots">
+                        <div class="dot dot-red"></div>
+                        <div class="dot dot-yellow"></div>
+                        <div class="dot dot-green"></div>
+                    </div>
+                    <div class="terminal-title">bash — tunr</div>
+                </div>
+                <div class="terminal-body">
+                    <span class="cmd-prompt">~</span> <span class="cmd-text">tunr share --port 3000</span><br /><br />
+                    <span class="cmd-dim">Connecting to edge relay...</span><br />
+                    <span class="cmd-dim">Requesting wildcard certificate...</span><br /><br />
+                    <span class="cmd-success">✓</span> Tunnel established successfully<br /><br />
+                    Traffic to <a href="#" class="cmd-url">https://ax2b3.tunr.sh</a> is now forwarding to <span
+                        class="cmd-text">localhost:3000</span><br />
+                    <span class="cmd-dim">Hit Ctrl+C to quit.</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Prominent Feature: Feedback Injection -->
+        <section class="section" style="background: var(--bg-surface); border-bottom: 1px solid var(--border);">
+            <div class="container">
+                <div
+                    style="display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 800px; margin: 0 auto;">
+                    <div
+                        style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 100px; background: rgba(124, 58, 237, 0.1); color: var(--accent); font-weight: 600; font-size: 13px; margin-bottom: 24px; border: 1px solid rgba(124, 58, 237, 0.2);">
+                        <span style="font-size: 16px;">💬</span> Featured Superpower
+                    </div>
+
+                    <h2
+                        style="font-size: 40px; font-weight: 800; letter-spacing: -1px; margin-bottom: 24px; background: linear-gradient(to right, #fff, #a1a1aa); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">
+                        Zero-Config Client Feedback
+                    </h2>
+
+                    <p style="font-size: 18px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 40px;">
+                        Pass the <code>--inject-widget</code> flag and tunr will automatically inject a Marker.io-style
+                        visual feedback widget into the HTML proxy layer. <strong>No code changes required.</strong>
+                        <br /><br />
+                        Clients can pin comments directly onto the UI, and all JavaScript console errors from their
+                        browser stream directly to your <a href="https://app.tunr.sh/dashboard/feedback"
+                            style="color: var(--text-primary); text-decoration: underline; text-underline-offset: 4px;">Tunr
+                            Dashboard</a>.
+                    </p>
+
+                    <div
+                        style="background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 12px; padding: 16px 24px; font-family: var(--font-mono); font-size: 15px; color: var(--text-primary); display: flex; align-items: center; gap: 12px; width: 100%; max-width: 500px; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                        <span style="color: var(--text-dim);">$</span> tunr share -p 3000 --inject-widget
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- More Superpowers for Vibecoders -->
+        <section id="features" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <h2>More Superpowers for Vibecoders</h2>
+                    <p>We built tunr specifically for freelancers and AI-assisted developers demoing web apps to
+                        clients. Stop apologizing for crashes and database wipes.</p>
+                </div>
+
+                <div class="grid-2">
+
+                    <!-- Freeze Mode -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #22d3ee;">❄️</div>
+                        <h3>Freeze Mode (Anti-Crash)</h3>
+                        <p>If your local server crashes mid-demo (Node exception, database drops), the tunnel serves the
+                            last successful HTML response from proxy memory. The client never sees an error page.</p>
+                        <div class="code-snippet">tunr share -p 3000 --freeze</div>
+                    </div>
+
+                    <!-- Read-Only Demo Mode -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #10b981;">🛡️</div>
+                        <h3>Read-Only Demos</h3>
+                        <p>Prevent destructive actions during client demos. The proxy blocks all state-mutating requests
+                            (POST, PUT, DELETE) from reaching your local server, returning simulated success codes
+                            instead.</p>
+                        <div class="code-snippet">tunr share -p 3000 --demo</div>
+                    </div>
+
+                    <!-- AI Integration -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: var(--accent-pink);">🤖</div>
+                        <h3>AI Native (MCP Support)</h3>
+                        <p>Tunr fully supports the Model Context Protocol. Give Claude Desktop or Cursor direct agentic
+                            control to spin up tunnels, inspect traffic, and debug request payloads for you.</p>
+                        <div class="code-snippet">tunr mcp</div>
+                    </div>
+
+                    <!-- Password Protected -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: var(--accent-cyan);">🔒</div>
+                        <h3>Password Protected</h3>
+                        <p>Add Basic Authentication to your public URL instantly. Keep your development environments
+                            secure from unauthorized access while sharing with clients.</p>
+                        <div class="code-snippet">tunr share -p 3000 --password "secret"</div>
+                    </div>
+
+                    <!-- Auto-Expiring Tunnels -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: var(--accent-orange);">⏳</div>
+                        <h3>Auto-Expiring Tunnels</h3>
+                        <p>Set a Time-To-Live (TTL) so your tunnels close automatically. Never worry about forgetting to
+                            shut down a tunnel exposing your local machine.</p>
+                        <div class="code-snippet">tunr share -p 3000 --ttl 2h30m</div>
+                    </div>
+
+                    <!-- Path Routing -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: var(--accent-green);">🔀</div>
+                        <h3>Path Routing</h3>
+                        <p>Route different URL paths to different upstream ports on your machine. Perfect for testing
+                            microservices or serving your frontend and API from a single tunnel.</p>
+                        <div class="code-snippet">tunr share --route /=3000 --route /api=8080</div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- Commands Reference Section -->
+        <section class="section" style="background: var(--bg-surface); border-top: 1px solid var(--border);">
+            <div class="container">
+                <div class="section-header">
+                    <h2
+                        style="font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px;">
+                        Reference</h2>
+                    <h3
+                        style="font-size: 40px; font-weight: 800; letter-spacing: -1px; margin: 12px 0; background: linear-gradient(135deg, #ffffff 30%, #a1a1aa 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">
+                        Commands
+                    </h3>
+                    <p style="font-size: 18px; color: var(--text-secondary);">Everything is one tunr command away.</p>
+                </div> <!-- /section-header -->
+
+                <!-- Commands terminal list -->
+                <div style="max-width: 800px; margin: 0 auto;">
+                    <!-- command entry -->
+                    <div style="margin-bottom: 24px;">
+                        <div
+                            style="font-family: var(--font-mono); font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+                            tunr share &lt;options&gt;</div>
+                        <div style="color: var(--text-secondary); margin-bottom: 16px; font-size: 15px;">Map a local
+                            port to a public URL with various parameters</div>
+
+                        <div class="terminal-body"
+                            style="background: #09090b; border: 1px solid var(--border); border-radius: 8px; padding: 16px;">
+                            <div style="color: #71717a; margin-bottom: 4px;"># Start proxying a domain</div>
+                            <div><span class="cmd-prompt">$</span><span class="cmd-text">tunr share --subdomain myapp
+                                    --port 3000</span></div>
+                            <div style="color: var(--accent-green); margin-top: 4px; font-weight: 600;">✓
+                                https://myapp.tunr.sh → localhost:3000</div>
+
+                            <div style="color: #71717a; margin-top: 16px; margin-bottom: 4px;"># Start an API proxy
+                            </div>
+                            <div><span class="cmd-prompt">$</span><span class="cmd-text">tunr share --subdomain api
+                                    --port 8080</span></div>
+                            <div style="color: var(--accent-green); margin-top: 4px; font-weight: 600;">✓
+                                https://api.tunr.sh → localhost:8080</div>
+
+                            <div style="color: #71717a; margin-top: 16px; margin-bottom: 4px;"># Route different paths
+                                to different upstream ports</div>
+                            <div><span class="cmd-prompt">$</span><span class="cmd-text">tunr share --subdomain myapp
+                                    --port 3000 --route /api=8080 --route /ws=9000</span></div>
+                            <div style="color: var(--accent-green); margin-top: 4px; font-weight: 600;">✓
+                                https://myapp.tunr.sh → localhost:3000</div>
+                            <div style="color: var(--accent-green); font-weight: 600;"> https://myapp.tunr.sh/api →
+                                localhost:8080</div>
+                            <div style="color: var(--accent-green); font-weight: 600;"> https://myapp.tunr.sh/ws →
+                                localhost:9000</div>
+
+                            <div style="color: #71717a; margin-top: 16px; margin-bottom: 4px;"># Optional run flags
+                                (Freeze anti-crash & Vibecoder features)</div>
+                            <div><span class="cmd-prompt">$</span><span class="cmd-text">tunr share -p 3000 --freeze
+                                    --inject-widget</span></div>
+                            <div style="color: var(--accent-green); margin-top: 4px; font-weight: 600;">✓
+                                https://random.tunr.sh → localhost:3000</div>
+                            <div style="color: var(--text-dim); font-size: 13px; font-style: italic;"> anti-crash cache
+                                enabled · feedback widget active</div>
+
+                            <div style="color: #71717a; margin-top: 16px; margin-bottom: 4px;"># Password protect and
+                                auto-expire</div>
+                            <div><span class="cmd-prompt">$</span><span class="cmd-text">tunr share -p 8080 --password
+                                    "secret" --ttl 30m</span></div>
+                            <div style="color: var(--accent-green); margin-top: 4px; font-weight: 600;">✓
+                                https://secure.tunr.sh → localhost:8080</div>
+                            <div style="color: var(--text-dim); font-size: 13px; font-style: italic;"> password
+                                protected · expires in 30m</div>
+
+                            <div style="color: #71717a; margin-top: 16px; margin-bottom: 4px;"># Start daemon in
+                                background</div>
+                            <div><span class="cmd-prompt">$</span><span class="cmd-text">tunr start -p 3000 --subdomain
+                                    myapp</span></div>
+                            <div style="color: var(--accent-cyan); margin-top: 4px; font-weight: 600;">ℹ Daemon modunda
+                                çalışıyor (PID 12345)</div>
+
+                            <div style="color: #71717a; margin-top: 16px; margin-bottom: 4px;"># Inspect running domains
+                            </div>
+                            <div><span class="cmd-prompt">$</span><span class="cmd-text">tunr status</span></div>
+                            <div style="color: var(--accent-green); margin-top: 4px; font-weight: 600;">● :3000 →
+                                https://myapp.tunr.sh</div>
+
+                            <div style="color: #71717a; margin-top: 16px; margin-bottom: 4px;"># Open Visual Dashboard &
+                                HTTP Request Logs</div>
+                            <div><span class="cmd-prompt">$</span><span class="cmd-text">tunr open</span></div>
+                            <div style="color: var(--accent-cyan); font-weight: 600;">✓ Dashboard açılıyor:
+                                http://localhost:19842</div>
+                        </div>
+                    </div> <!-- /command entry -->
+
+                    <div
+                        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-top: 32px;">
+                        <div
+                            style="padding: 16px; background: #09090b; border: 1px solid var(--border); border-radius: 8px;">
+                            <div
+                                style="font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+                                tunr login</div>
+                            <div style="color: var(--text-secondary); font-size: 14px;">Authenticate with tunr.sh</div>
+                        </div>
+                        <div
+                            style="padding: 16px; background: #09090b; border: 1px solid var(--border); border-radius: 8px;">
+                            <div
+                                style="font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+                                tunr open</div>
+                            <div style="color: var(--text-secondary); font-size: 14px;">Open local HTTP inspector</div>
+                        </div>
+                        <div
+                            style="padding: 16px; background: #09090b; border: 1px solid var(--border); border-radius: 8px;">
+                            <div
+                                style="font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+                                tunr mcp</div>
+                            <div style="color: var(--text-secondary); font-size: 14px;">Start AI Model Context Protocol
+                            </div>
+                        </div>
+                        <div
+                            style="padding: 16px; background: #09090b; border: 1px solid var(--border); border-radius: 8px;">
+                            <div
+                                style="font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+                                tunr doctor</div>
+                            <div style="color: var(--text-secondary); font-size: 14px;">Diagnose setup or proxy issues
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- /Commands list -->
+            </div>
+        </section>
+
+        <!-- How it works -->
+        <section class="section">
+            <div class="container">
+                <div class="section-header">
+                    <h2
+                        style="font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px;">
+                        Under the Hood</h2>
+                    <h3
+                        style="font-size: 40px; font-weight: 800; letter-spacing: -1px; margin: 12px 0; background: linear-gradient(135deg, #ffffff 30%, #a1a1aa 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">
+                        How it
+                        works</h3>
+                    <p style="font-size: 18px;">A single Go binary that handles everything under the hood.</p>
+                </div>
+
+                <div style="max-width: 600px; margin: 0 auto;">
+                    <ol style="list-style: none; padding: 0; margin: 0;">
+                        <li style="display: flex; gap: 24px; margin-bottom: 32px; align-items: flex-start;">
+                            <div
+                                style="width: 32px; height: 32px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; color: var(--accent-pink);">
+                                1</div>
+                            <div style="color: var(--text-secondary); font-size: 16px; line-height: 1.6;">Opens a
+                                secure, multiplexed WebSocket connection to the global Relay Network.</div>
+                        </li>
+                        <li style="display: flex; gap: 24px; margin-bottom: 32px; align-items: flex-start;">
+                            <div
+                                style="width: 32px; height: 32px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; color: var(--accent-cyan);">
+                                2</div>
+                            <div style="color: var(--text-secondary); font-size: 16px; line-height: 1.6;">Spins up a
+                                local HTTP Proxy to intercept, mock (Demo Mode), or pass entirely (Path Routing) the
+                                requests directed towards your localhost.</div>
+                        </li>
+                        <li style="display: flex; gap: 24px; margin-bottom: 32px; align-items: flex-start;">
+                            <div
+                                style="width: 32px; height: 32px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; color: var(--accent-orange);">
+                                3</div>
+                            <div style="color: var(--text-secondary); font-size: 16px; line-height: 1.6;">Handles
+                                end-to-end WebSocket upgrades instantly so that HMR (Next.js, Vite) works completely out
+                                of the box.</div>
+                        </li>
+                        <li style="display: flex; gap: 24px; margin-bottom: 32px; align-items: flex-start;">
+                            <div
+                                style="width: 32px; height: 32px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; color: var(--accent-green);">
+                                4</div>
+                            <div style="color: var(--text-secondary); font-size: 16px; line-height: 1.6;">Continuously
+                                logs interactions down to the millisecond inside memory, providing AI agents via MCP
+                                unparalleled debugging visibility.</div>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+        </section>
+
+        <!-- Install block -->
+        <section id="install" class="section"
+            style="border-top: 1px solid var(--border); background: var(--bg-surface);">
+            <div class="container">
+                <div class="section-header">
+                    <h2 style="font-size: 32px; font-weight: 800; color: var(--text-primary); margin-bottom: 12px;">Get
+                        started in seconds</h2>
+                    <p style="font-size: 18px;">Install Tunr and share your first localhost app in under a minute.</p>
+                </div>
+
+                <div class="install-tabs" style="margin-top: 40px;">
+                    <div
+                        style="padding: 12px 24px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-secondary); background: rgba(255,255,255,0.02);">
+                        macOS / Linux / Windows Shell
+                    </div>
+                    <div class="install-cmd">
+                        <span>curl -sL https://tunr.sh/install.sh | sh</span>
+                        <button class="copy-btn">Copy</button>
+                    </div>
+                </div>
+
+                <p style="text-align: center; margin-top: 24px; color: var(--text-secondary); font-size: 14px;">
+                    <a href="https://github.com/tunr-dev/tunr"
+                        style="color: var(--text-primary); text-decoration: underline; text-underline-offset: 4px;">View
+                        on GitHub</a>
+                    &nbsp;·&nbsp;
+                    <a href="docs.html"
+                        style="color: var(--text-primary); text-decoration: underline; text-underline-offset: 4px;">Build
+                        from source</a>
+                </p>
+
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <div class="container">
+        <footer
+            style="display: flex; flex-direction: column; align-items: center; text-align: center; padding: 48px 0; border-top: 1px solid var(--border); color: var(--text-dim);">
+            <div class="footer-brand" style="margin-bottom: 24px;">
+                <div
+                    style="display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+                    <span>🚇</span> tunr.sh
+                </div>
+                <p>Built by ahmet vural and <a href="https://theuglycode.com/" target="_blank"
+                        style="color: var(--text-secondary); text-decoration: underline;">theUglyCode</a></p>
+            </div>
+            <div class="footer-links" style="display: flex; gap: 16px; font-size: 14px;">
+                <a href="terms.html" style="color: var(--text-secondary); text-decoration: none;">Terms</a>
+                <a href="privacy.html" style="color: var(--text-secondary); text-decoration: none;">Privacy policy</a>
+                <a href="https://github.com/tunr-dev/tunr"
+                    style="color: var(--text-secondary); text-decoration: none;">GitHub</a>
+            </div>
+        </footer>
+    </div>
+
+</body>
+
+</html>

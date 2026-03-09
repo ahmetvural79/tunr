@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Terms of Service | tunr</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+    <style>
+        .policy-container {
+            max-width: 800px;
+            margin: 120px auto 80px;
+            padding: 0 24px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        .policy-container h1 {
+            font-size: 40px;
+            color: var(--text-primary);
+            margin-bottom: 24px;
+            font-weight: 800;
+            letter-spacing: -1px;
+        }
+
+        .policy-container h2 {
+            font-size: 24px;
+            color: var(--text-primary);
+            margin-top: 48px;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+
+        .policy-container p {
+            margin-bottom: 24px;
+            font-size: 16px;
+        }
+
+        .policy-container ul {
+            margin-bottom: 24px;
+            padding-left: 20px;
+        }
+
+        .policy-container li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="navbar-wrapper">
+        <div class="container">
+            <nav>
+                <a href="/" class="logo"><span>🚇</span> tunr.sh</a>
+                <div class="nav-links">
+                    <a href="/#features">Features</a>
+                    <a href="docs.html">Docs</a>
+                    <a href="https://github.com/tunr-dev/tunr" target="_blank">GitHub</a>
+                    <a href="https://app.tunr.sh/login" class="btn btn-primary" style="padding: 6px 12px;">Dashboard</a>
+                </div>
+            </nav>
+        </div>
+    </div>
+
+    <main class="policy-container">
+        <h1>Terms of Service</h1>
+        <p><em>Last updated: March 2026</em></p>
+
+        <p>Welcome to tunr.sh, a service built and maintained by ahmet vural and theUglyCode. By using our website, API,
+            or command-line interface ("Services"), you agree to these terms.</p>
+
+        <h2>1. Acceptable Use</h2>
+        <p>You agree not to use the Services to:</p>
+        <ul>
+            <li>Host, distribute, or proxy malicious software, phishing sites, or illegal content.</li>
+            <li>Attempt to bypass rate limits, quotas, or billing mechanisms.</li>
+            <li>Disrupt or degrade the performance of the Relay Network.</li>
+        </ul>
+
+        <h2>2. Data Privacy & Telemetry</h2>
+        <p>Our open source CLI connects to our managed Relay Network. We temporarily process HTTP metadata necessary to
+            route your traffic. We do not inspect the contents of encrypted TLS payloads forwarded through the tunnels.
+            See our <a href="privacy.html" style="color: var(--accent); text-decoration: underline;">Privacy Policy</a>
+            for full details.</p>
+
+        <h2>3. Local Agent Features (Vibecoder Mode)</h2>
+        <p>Features such as "Freeze Mode", "Demo Mode", and "Feedback Injection" modify the HTTP response payloads
+            strictly on your <strong>local machine</strong> within the open-source Go proxy. No modifications occur on
+            our edge network.</p>
+
+        <h2>4. Open Source CLI vs Hosted Relay</h2>
+        <p>The `tunr` command-line tool is open source under the MIT License. The tunr.sh edge Relay Network and
+            Dashboard are proprietary, managed services provided "AS IS" without warranties of any kind regarding uptime
+            or availability unless specified under a paid Service Level Agreement (SLA).</p>
+
+        <h2>5. Account Suspension</h2>
+        <p>We reserve the right to suspend or terminate access to the Relay Network immediately if we determine, in our
+            sole discretion, that your usage violates these terms or poses a security risk to the platform.</p>
+    </main>
+
+    <div class="container">
+        <footer
+            style="display: flex; flex-direction: column; align-items: center; text-align: center; padding: 48px 0; border-top: 1px solid var(--border); color: var(--text-dim);">
+            <div class="footer-brand" style="margin-bottom: 24px;">
+                <div
+                    style="display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+                    <span>🚇</span> tunr.sh
+                </div>
+                <p>Built by ahmet vural and <a href="https://theuglycode.com/" target="_blank"
+                        style="color: var(--text-secondary); text-decoration: underline;">theUglyCode</a></p>
+            </div>
+            <div class="footer-links" style="display: flex; gap: 16px; font-size: 14px;">
+                <a href="terms.html" style="color: var(--text-secondary); text-decoration: none;">Terms</a>
+                <a href="privacy.html" style="color: var(--text-secondary); text-decoration: none;">Privacy policy</a>
+                <a href="https://github.com/tunr-dev/tunr"
+                    style="color: var(--text-secondary); text-decoration: none;">GitHub</a>
+            </div>
+        </footer>
+    </div>
+</body>
+
+</html>

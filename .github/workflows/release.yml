@@ -1,0 +1,47 @@
+name: Release
+
+# Tag push'ta tetiklenir: git tag v1.0.0 && git push origin v1.0.0
+on:
+  push:
+    tags:
+      - "v*"
+
+# Release workflow'u CI geçmeden çalışmasın
+# (test etmeden release yapmak efsanevi bir hata)
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # GitHub Release oluşturmak için
+      packages: write  # Container registry için (Faz 1'de)
+
+    steps:
+      - name: Checkout (tüm history, not sadece HEAD)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # goreleaser changelog için tüm history lazım
+
+      - name: Go kurulum
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Son CI testlerini çalıştır (güvenlik için)
+        run: |
+          go mod verify
+          go test ./...
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: goreleaser ile release
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Homebrew tap için ayrı token (farklı repo'ya write erişimi)
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

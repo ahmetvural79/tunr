@@ -1,0 +1,42 @@
+version: 2
+updates:
+  # Go dependencies - haftalık kontrol
+  # (Çünkü güvenlik güncellemelerini manuel takip etmek
+  # sonunda unutulur, makineye yaptıralım)
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"      # Pazartesi sabahı - coffeenizi alın, PR'lar geliyor
+      time: "09:00"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+    commit-message:
+      prefix: "chore(deps)"
+    # Sadece güvenlik güncellemelerini otomatik merge et
+    # (breaking changes için insan gözü gerekir)
+    groups:
+      # Test bağımlılıkları bir arada gelsin
+      dev-dependencies:
+        patterns:
+          - "github.com/stretchr/testify*"
+          - "github.com/golang/mock*"
+
+  # GitHub Actions - bunlar da güncellenebilir
+  # (actions/checkout@v3 diye sonsuza kadar kalmaz)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "chore(ci)"
