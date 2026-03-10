@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="url(#bg-grad)"/>
+
+  <!-- Tunnel perspective rings — radiating depth -->
+  <ellipse cx="256" cy="256" rx="176" ry="176" fill="none" stroke="white" stroke-width="2" opacity="0.12"/>
+  <ellipse cx="256" cy="256" rx="136" ry="136" fill="none" stroke="white" stroke-width="2" opacity="0.10"/>
+  <ellipse cx="256" cy="256" rx="96" ry="96" fill="none" stroke="white" stroke-width="1.5" opacity="0.08"/>
+
+  <!-- Central T — bold geometric letterform -->
+  <g transform="translate(256, 252)">
+    <rect x="-96" y="-84" width="192" height="42" rx="8" fill="white"/>
+    <rect x="-22" y="-84" width="44" height="200" rx="8" fill="white"/>
+  </g>
+
+  <!-- Forward arrow — data flowing through the tunnel -->
+  <path d="M360 360 L400 400 L360 440" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.6"/>
+  <line x1="320" y1="400" x2="396" y2="400" stroke="white" stroke-width="12" stroke-linecap="round" opacity="0.6"/>
+</svg>

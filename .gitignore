@@ -1,0 +1,89 @@
+# Go build output
+/tunr
+/dist/
+
+# Binary'ler ve test artifact'ları
+*.exe
+*.test
+*.out
+
+# Config ve gizli dosyalar — asla commit etme!
+# (Biri commit ederse PR'ı reddet ve konuş)
+*.env
+.env.local
+.env.*.local
+secrets.json
+*.key
+*.pem
+*.crt
+*.p12
+
+# tunr runtime dosyaları
+# (bunları commit etmek hiçbir işe yaramaz)
+/tmp/
+/.tunr/
+*.log
+tunr.log
+
+# macOS artist touches
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# İDE dosyaları - herkes kendi IDE'sini sevebilir
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vim/
+
+# Coverage raporları (CI artifact olarak upload edilir)
+coverage.txt
+coverage.html
+*.coverprofile
+
+# Test binary'leri
+**/*.test
+
+# goreleaser output
+/dist/
+_build/
+
+# ── PROPRIETARY / CLOSED SOURCE ─────────────────────────────────────────────
+# The following are NOT part of the open source CLI.
+# They live in private repositories.
+
+# Relay server (proprietary infrastructure)
+relay/
+
+
+
+# Dashboard Next.js app (proprietary SaaS frontend)
+landing/app/
+
+# Legacy dashboard files kept locally only
+landing/admin.html
+landing/admin.css
+landing/admin.js
+landing/dashboard.html
+landing/dashboard.css
+landing/dashboard.js
+
+# ── SECRETS / CREDENTIALS ────────────────────────────────────────────────────
+# NEVER commit these. Ever.
+supabase.json
+paddle.json
+.env
+.env.*
+.env.local
+.env.*.local
+*.secret
+
+# Node.js (for SDK and dashboard)
+node_modules/
+.next/
+.vercel/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

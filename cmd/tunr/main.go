@@ -1,0 +1,24 @@
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+var Version = "dev"
+var BuildDate = ""
+var Commit = ""
+
+func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "\nUnexpected error: %v\n", r)
+			fmt.Fprintln(os.Stderr, "Please report: https://github.com/tunr-dev/tunr/issues")
+			os.Exit(1)
+		}
+	}()
+
+	if err := Execute(); err != nil {
+		os.Exit(1)
+	}
+}

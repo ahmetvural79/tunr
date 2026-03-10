@@ -1,0 +1,137 @@
+# .goreleaser.yaml
+# goreleaser ile tek komutla her platformda binary üretiyoruz.
+# "bende çalışıyordu" sorununu binary level'da çözüyoruz.
+
+version: 2
+
+project_name: tunr
+
+before:
+  hooks:
+    # Her build öncesi bağımlılıkları kontrol et
+    - go mod tidy
+    - go mod verify  # VERİFY: modüllerin beklenen checksum'larla eşleştiğini doğrula
+    # GÜVENLİK: supply chain saldırılarına karşı önemli
+
+builds:
+  - id: tunr
+    main: ./cmd/tunr
+    binary: tunr
+    
+    # Build zamanında version inject et
+    ldflags:
+      - -s -w  # binary'yi küçült (debug sembollerini çıkar)
+      - -X main.Version={{.Version}}
+      - -X main.BuildDate={{.Date}}
+      - -X main.Commit={{.Commit}}
+    
+    # CGO kapalı = no system dependencies = "works everywhere"
+    env:
+      - CGO_ENABLED=0
+    
+    # Tüm hedef platformlar
+    goos:
+      - linux
+      - windows
+      - darwin
+    
+    goarch:
+      - amd64
+      - arm64
+      - "386"  # 32-bit Linux için (CI sunucular bazen eski olur)
+    
+    # Desteklenmeyen kombinasyonları atla
+    ignore:
+      - goos: windows
+        goarch: arm64  # Windows ARM64 için sonra bakarız
+      - goos: darwin
+        goarch: "386"  # macOS 32-bit diye bir şey 2010'da öldü
+
+archives:
+  - id: tunr
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+    
+    format_overrides:
+      - goos: windows
+        format: zip  # Windows kullanıcıları zip ister tabii ki
+    
+    # İnsan okusun diye ek dosyalar
+    files:
+      - README.md
+      - LICENSE
+      - SECURITY.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+  # GÜVENLİK: her binary'nin SHA256 hash'i
+  # kullanıcılar "bu dosyayı ben mi indirdim?" diye kontrol edebilir
+
+signs:
+  - artifacts: checksum
+    # TODO: GPG imzalama Faz 1'de eklenecek
+    # cosign ile Sigstore imzalama planlı
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^chore:"      # dependency güncellemeleri changelog'u kirletmesin
+      - "^docs:"       # doküman değişiklikleri ayrı
+      - "^test:"       # test değişiklikleri ayrı
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: tunr-dev
+    name: tunr
+  
+  # Draft olarak oluştur, manuel confirm et
+  # (yanlış versiyonu yayınlamak mahcubiyet verir)
+  draft: true
+  
+  name_template: "tunr v{{.Version}}"
+  
+  footer: |
+    ## Nasıl Kurulur?
+    
+    ```bash
+    # macOS (Homebrew)
+    brew install tunr-dev/tap/tunr
+    
+    # Linux / macOS (curl)
+    curl -fsSL https://tunr.sh/install | sh
+    
+    # npm (Node.js projeleri için)
+    npx tunr@latest share --port 3000
+    ```
+    
+    Daha fazlası için: https://tunr.sh/docs
+
+brews:
+  - name: tunr
+    tap:
+      owner: tunr-dev
+      name: homebrew-tap
+    description: "Vibecoder'lar için local → public tunnel aracı"
+    homepage: "https://tunr.sh"
+    license: "PolyForm-Shield-1.0.0"
+    
+    test: |
+      system "#{bin}/tunr", "version"
+    
+    install: |
+      bin.install "tunr"
+
+# npm paketi (Faz 1'de)
+# nfpms:
+#   - package_name: tunr
+#     ...

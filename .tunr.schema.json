@@ -1,0 +1,61 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "description": "tunr workspace konfigürasyon dosyası. Bu dosyayı gitignore'a eklemeyin — takım paylaşımı için tasarlandı.",
+    "type": "object",
+    "properties": {
+        "port": {
+            "type": "integer",
+            "description": "Varsayılan local port (tunr share ile kullanılır)",
+            "default": 3000,
+            "minimum": 1024,
+            "maximum": 65535
+        },
+        "subdomain": {
+            "type": "string",
+            "description": "Özel subdomain (Pro plan gerektirir). Örn: 'myapp' → myapp.tunr.sh"
+        },
+        "autoShare": {
+            "type": "boolean",
+            "description": "tunr start çalıştırıldığında otomatik tunnel aç",
+            "default": false
+        },
+        "dashboardPort": {
+            "type": "integer",
+            "description": "HTTP inspector dashboard portu",
+            "default": 19842
+        },
+        "inspectorEnabled": {
+            "type": "boolean",
+            "description": "HTTP request inspector aktif mi?",
+            "default": true
+        },
+        "logRetention": {
+            "type": "integer",
+            "description": "Hafızada tutulacak maksimum istek sayısı",
+            "default": 1000,
+            "minimum": 10,
+            "maximum": 10000
+        },
+        "mcp": {
+            "type": "object",
+            "description": "MCP (Model Context Protocol) ayarları",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "MCP server aktif mi? (Claude, Cursor entegrasyonu)",
+                    "default": true
+                }
+            }
+        },
+        "env": {
+            "type": "string",
+            "enum": [
+                "production",
+                "staging",
+                "development"
+            ],
+            "description": "Ortam tanımı (log seviyesi ve davranış için)",
+            "default": "development"
+        }
+    }
+}

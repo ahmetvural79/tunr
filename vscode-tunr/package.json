@@ -1,0 +1,132 @@
+{
+  "name": "vscode-tunr",
+  "displayName": "tunr — Local → Public Tunnel",
+  "description": "VS Code'dan direkt tunnel aç, kapat, izle. ngrok'a veda et.",
+  "version": "0.1.0",
+  "publisher": "tunr-dev",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tunr-dev/tunr"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other", "Debuggers"],
+  "keywords": ["tunnel", "localhost", "public url", "ngrok alternative", "tunr"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "tunr.share",
+        "title": "tunr: Share Current Port",
+        "icon": "$(broadcast)"
+      },
+      {
+        "command": "tunr.stop",
+        "title": "tunr: Stop Tunnel",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "tunr.status",
+        "title": "tunr: Show Tunnel Status",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "tunr.openDashboard",
+        "title": "tunr: Open HTTP Inspector",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "tunr.copyURL",
+        "title": "tunr: Copy Tunnel URL",
+        "icon": "$(copy)"
+      }
+    ],
+    "configuration": {
+      "title": "tunr",
+      "properties": {
+        "tunr.defaultPort": {
+          "type": "number",
+          "default": 3000,
+          "description": "Tunnel açılırken kullanılacak varsayılan port"
+        },
+        "tunr.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "VS Code açılırken tunnel'ı otomatik başlat"
+        },
+        "tunr.binaryPath": {
+          "type": "string",
+          "default": "tunr",
+          "description": "tunr binary'sinin tam yolu (PATH'te yoksa belirtin)"
+        },
+        "tunr.dashboardPort": {
+          "type": "number",
+          "default": 19842,
+          "description": "Dashboard/inspector portu"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tunr-sidebar",
+          "title": "tunr",
+          "icon": "$(broadcast)"
+        }
+      ]
+    },
+    "views": {
+      "tunr-sidebar": [
+        {
+          "id": "tunr.tunnelView",
+          "name": "Aktif Tunnel'lar",
+          "when": "true"
+        },
+        {
+          "id": "tunr.requestView",
+          "name": "Son İstekler",
+          "when": "true"
+        }
+      ]
+    },
+    "menus": {
+      "commandPalette": [
+        {"command": "tunr.share"},
+        {"command": "tunr.stop"},
+        {"command": "tunr.status"},
+        {"command": "tunr.openDashboard"},
+        {"command": "tunr.copyURL"}
+      ],
+      "editor/context": [
+        {
+          "command": "tunr.share",
+          "group": "tunr",
+          "when": "true"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "tunr.share",
+        "key": "ctrl+shift+p ctrl+shift+t",
+        "mac": "cmd+shift+p cmd+shift+t"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "node build.js",
+    "package": "npx vsce package",
+    "publish": "npx vsce publish"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}

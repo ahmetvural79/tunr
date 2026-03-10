@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>tunr dashboard</title>
+    <!-- 
+    This dashboard is embedded inside the Go binary.
+    No CDN or internet connection is required.
+    It works offline since it is self-contained.
+  -->
+    <style>
+        /* Same design system — consistent with landing page */
+        :root {
+            --bg: #080b14;
+            --surface: #0d1220;
+            --elevated: #131929;
+            --card: #0f1623;
+            --cyan: #00d4ff;
+            --cyan-dim: rgba(0, 212, 255, 0.12);
+            --green: #10b981;
+            --red: #f87171;
+            --yellow: #fbbf24;
+            --text: #f1f5f9;
+            --text-dim: #475569;
+            --text-secondary: #94a3b8;
+            --border: rgba(255, 255, 255, 0.07);
+            --font-sans: 'Inter', system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── HEADER ── */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 24px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            padding: 4px 12px;
+            background: var(--elevated);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .dot-live {
+            width: 6px;
+            height: 6px;
+            background: var(--green);
+            border-radius: 50%;
+            animation: pulse-dot 2s infinite;
+        }
+
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        /* ── LAYOUT ── */
+        .main {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ── SIDEBAR ── */
+        .sidebar {
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 20px 16px;
+            overflow-y: auto;
+        }
+
+        .sidebar-title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 12px;
+            padding-left: 8px;
+        }
+
+        .tunnel-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .tunnel-card:hover,
+        .tunnel-card.active {
+            border-color: rgba(0, 212, 255, 0.35);
+        }
+
+        .tunnel-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .tunnel-port {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--cyan);
+        }
+
+        .tunnel-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+        }
+
+        .tunnel-status.error {
+            background: var(--red);
+        }
+
+        .tunnel-status.connecting {
+            background: var(--yellow);
+            animation: pulse-dot 1s infinite;
+        }
+
+        .tunnel-url {
+            font-size: 11px;
+            color: var(--text-secondary);
+            word-break: break-all;
+            line-height: 1.5;
+        }
+
+        .tunnel-url a {
+            color: var(--cyan);
+            text-decoration: none;
+        }
+
+        .tunnel-url a:hover {
+            text-decoration: underline;
+        }
+
+        .tunnel-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--text-dim);
+            font-family: var(--font-mono);
+        }
+
+        /* ── MAIN CONTENT ── */
+        .content {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── TABS ── */
+        .tabs {
+            display: flex;
+            gap: 2px;
+            padding: 12px 20px 0;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            flex-shrink: 0;
+        }
+
+        .tab {
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.15s;
+        }
+
+        .tab:hover {
+            color: var(--text);
+        }
+
+        .tab.active {
+            color: var(--cyan);
+            border-bottom-color: var(--cyan);
+        }
+
+        /* ── LOG VIEWER ── */
+        .log-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .log-search {
+            flex: 1;
+            max-width: 320px;
+            background: var(--elevated);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 6px 12px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text);
+            outline: none;
+        }
+
+        .log-search:focus {
+            border-color: rgba(0, 212, 255, 0.4);
+        }
+
+        .btn-sm {
+            padding: 5px 12px;
+            font-size: 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: var(--font-sans);
+            transition: 0.15s;
+        }
+
+        .btn-clear {
+            background: var(--elevated);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-clear:hover {
+            color: var(--text);
+        }
+
+        .btn-pause {
+            background: var(--cyan-dim);
+            color: var(--cyan);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+        }
+
+        .log-count {
+            font-size: 12px;
+            color: var(--text-dim);
+            font-family: var(--font-mono);
+            margin-left: auto;
+        }
+
+        /* ── LOG TABLE ── */
+        .log-container {
+            flex: 1;
+            overflow-y: auto;
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        .log-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .log-table thead {
+            position: sticky;
+            top: 0;
+            background: var(--elevated);
+            z-index: 10;
+        }
+
+        .log-table th {
+            text-align: left;
+            padding: 8px 16px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        .log-table td {
+            padding: 6px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            white-space: nowrap;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .log-row {
+            transition: background 0.1s;
+        }
+
+        .log-row:hover {
+            background: var(--elevated);
+        }
+
+        /* New entry highlight — flashes when a new entry arrives */
+        .log-row.new {
+            animation: highlight-row 0.8s ease-out;
+        }
+
+        @keyframes highlight-row {
+            0% {
+                background: rgba(0, 212, 255, 0.08);
+            }
+
+            100% {
+                background: transparent;
+            }
+        }
+
+        /* Status code colors */
+        .status-2xx {
+            color: var(--green);
+        }
+
+        .status-3xx {
+            color: #60a5fa;
+        }
+
+        .status-4xx {
+            color: var(--yellow);
+        }
+
+        .status-5xx {
+            color: var(--red);
+        }
+
+        /* Method colors */
+        .method-GET {
+            color: var(--green);
+        }
+
+        .method-POST {
+            color: var(--cyan);
+        }
+
+        .method-PUT {
+            color: var(--yellow);
+        }
+
+        .method-DELETE {
+            color: var(--red);
+        }
+
+        .method-PATCH {
+            color: #c084fc;
+        }
+
+        .td-time {
+            color: var(--text-dim);
+        }
+
+        .td-path {
+            color: var(--text);
+        }
+
+        .td-dur {
+            color: var(--text-secondary);
+        }
+
+        /* Millisecond duration color */
+        .dur-fast {
+            color: var(--green);
+        }
+
+        /* < 100ms */
+        .dur-medium {
+            color: var(--yellow);
+        }
+
+        /* 100-500ms */
+        .dur-slow {
+            color: var(--red);
+        }
+
+        /* > 500ms */
+
+        /* ── EMPTY STATE ── */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-dim);
+            gap: 12px;
+        }
+
+        .empty-icon {
+            font-size: 40px;
+            opacity: 0.4;
+        }
+
+        .empty-text {
+            font-size: 14px;
+        }
+
+        /* ── SCROLL TO BOTTOM ── */
+        .scroll-bottom-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--cyan);
+            color: #000;
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-size: 16px;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 16px rgba(0, 212, 255, 0.3);
+            transition: 0.2s;
+        }
+
+        .scroll-bottom-btn.visible {
+            display: flex;
+        }
+
+        .scroll-bottom-btn:hover {
+            transform: scale(1.1);
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+        rel="stylesheet" />
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <div class="header">
+        <div class="logo">
+            🚇 <strong>tunr</strong> dashboard
+        </div>
+        <div class="status-badge">
+            <span class="dot-live" id="live-dot"></span>
+            <span id="status-text">Connecting...</span>
+        </div>
+    </div>
+
+    <!-- MAIN LAYOUT -->
+    <div class="main">
+
+        <!-- SIDEBAR: Tunnel list -->
+        <div class="sidebar">
+            <div class="sidebar-title">Active Tunnels</div>
+            <div id="tunnel-list">
+                <!-- Populated by JS -->
+                <div class="empty-state" style="padding: 40px 0;">
+                    <div class="empty-icon">🚇</div>
+                    <div class="empty-text" style="font-size:12px">No tunnels</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CONTENT: Logs -->
+        <div class="content">
+            <div class="tabs">
+                <div class="tab active" data-tab="logs">HTTP Logs</div>
+                <div class="tab" data-tab="requests">Request Detail</div>
+            </div>
+
+            <!-- LOG TOOLBAR -->
+            <div class="log-toolbar">
+                <input type="text" class="log-search" id="log-search" placeholder="Filter: path, method, status..." />
+                <button class="btn-sm btn-pause" id="btn-pause" onclick="togglePause()">⏸ Pause</button>
+                <button class="btn-sm btn-clear" onclick="clearLogs()">🗑 Clear</button>
+                <span class="log-count" id="log-count">0 requests</span>
+            </div>
+
+            <!-- LOG TABLE -->
+            <div class="log-container" id="log-container">
+                <div class="empty-state" id="empty-state">
+                    <div class="empty-icon">📡</div>
+                    <div class="empty-text">Waiting for requests...</div>
+                    <div style="font-size:12px;color:var(--text-dim);margin-top:4px">
+                        Real-time HTTP logs will appear here
+                    </div>
+                </div>
+
+                <table class="log-table" id="log-table" style="display:none">
+                    <thead>
+                        <tr>
+                            <th style="width:80px">Time</th>
+                            <th style="width:70px">Method</th>
+                            <th>Path</th>
+                            <th style="width:60px">Status</th>
+                            <th style="width:70px">Duration</th>
+                            <th style="width:80px">Size</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scroll to bottom button -->
+    <button class="scroll-bottom-btn" id="scroll-btn" title="Scroll to bottom" onclick="scrollToBottom()">↓</button>
+
+    <script>
+        // ── Dashboard JS ──
+        // Real-time log streaming via WebSocket
+        // Vanilla JS — no need for React, this is a terminal tool
+
+        let ws = null;
+        let allLogs = [];
+        let paused = false;
+        let autoScroll = true;
+        const MAX_DISPLAY = 500; // max rows displayed in the table
+
+        // Establish WebSocket connection
+        function connectWS() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}/api/ws/logs`);
+
+            ws.onopen = () => {
+                document.getElementById('status-text').textContent = 'Live';
+                document.getElementById('live-dot').style.background = 'var(--green)';
+            };
+
+            ws.onmessage = (event) => {
+                if (paused) return;
+                try {
+                    const entry = JSON.parse(event.data);
+                    addLogEntry(entry);
+                } catch (e) {
+                    // Silently ignore JSON parse errors
+                }
+            };
+
+            ws.onclose = () => {
+                document.getElementById('status-text').textContent = 'Disconnected — reconnecting...';
+                document.getElementById('live-dot').style.background = 'var(--yellow)';
+                // Reconnect after 2s
+                setTimeout(connectWS, 2000);
+            };
+
+            ws.onerror = () => {
+                document.getElementById('status-text').textContent = 'Connection error';
+                document.getElementById('live-dot').style.background = 'var(--red)';
+            };
+        }
+
+        // Add log entry
+        function addLogEntry(entry) {
+            allLogs.push(entry);
+
+            const searchVal = document.getElementById('log-search').value.toLowerCase();
+            if (!matchesFilter(entry, searchVal)) return;
+
+            renderLogRow(entry, true); // true = new entry
+            updateCount();
+        }
+
+        // Filter check
+        function matchesFilter(entry, filter) {
+            if (!filter) return true;
+            return (
+                entry.path?.toLowerCase().includes(filter) ||
+                entry.method?.toLowerCase().includes(filter) ||
+                String(entry.status_code).includes(filter)
+            );
+        }
+
+        // Render a table row
+        function renderLogRow(entry, isNew = false) {
+            const tbody = document.getElementById('log-tbody');
+            const table = document.getElementById('log-table');
+            const empty = document.getElementById('empty-state');
+
+            table.style.display = '';
+            empty.style.display = 'none';
+
+            // Max row limit — prevent the table from growing endlessly
+            const rows = tbody.querySelectorAll('tr');
+            if (rows.length >= MAX_DISPLAY) {
+                tbody.removeChild(rows[0]);
+            }
+
+            const row = document.createElement('tr');
+            row.className = 'log-row' + (isNew ? ' new' : '');
+
+            const time = new Date(entry.time).toLocaleTimeString('en-US', {
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+
+            const statusClass = entry.status_code < 300 ? 'status-2xx'
+                : entry.status_code < 400 ? 'status-3xx'
+                    : entry.status_code < 500 ? 'status-4xx'
+                        : 'status-5xx';
+
+            const durClass = entry.duration_ms < 100 ? 'dur-fast'
+                : entry.duration_ms < 500 ? 'dur-medium'
+                    : 'dur-slow';
+
+            const size = entry.bytes_sent > 1024
+                ? `${(entry.bytes_sent / 1024).toFixed(1)}kb`
+                : `${entry.bytes_sent || 0}b`;
+
+            row.innerHTML = `
+        <td class="td-time">${time}</td>
+        <td class="method-${entry.method}">${entry.method}</td>
+        <td class="td-path" title="${entry.path}">${entry.path}</td>
+        <td class="${statusClass}">${entry.status_code}</td>
+        <td class="${durClass}">${entry.duration_ms}ms</td>
+        <td style="color:var(--text-dim)">${size}</td>
+      `;
+
+            tbody.appendChild(row);
+
+            if (autoScroll) scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById('log-container');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function togglePause() {
+            paused = !paused;
+            const btn = document.getElementById('btn-pause');
+            btn.textContent = paused ? '▶ Resume' : '⏸ Pause';
+            btn.style.color = paused ? 'var(--yellow)' : 'var(--cyan)';
+        }
+
+        function clearLogs() {
+            allLogs = [];
+            document.getElementById('log-tbody').innerHTML = '';
+            document.getElementById('log-table').style.display = 'none';
+            document.getElementById('empty-state').style.display = '';
+            updateCount();
+        }
+
+        function updateCount() {
+            const n = allLogs.length;
+            document.getElementById('log-count').textContent = `${n.toLocaleString('en-US')} requests`;
+        }
+
+        // Search filter
+        let filterTimer = null;
+        document.getElementById('log-search').addEventListener('input', (e) => {
+            clearTimeout(filterTimer);
+            filterTimer = setTimeout(() => {
+                // Apply filter — re-render all logs
+                document.getElementById('log-tbody').innerHTML = '';
+                const filter = e.target.value.toLowerCase();
+                const filtered = allLogs.filter(l => matchesFilter(l, filter));
+                filtered.slice(-MAX_DISPLAY).forEach(l => renderLogRow(l, false));
+                updateCount();
+            }, 200);
+        });
+
+        // Scroll tracking — scroll-to-bottom button
+        document.getElementById('log-container').addEventListener('scroll', (e) => {
+            const el = e.target;
+            const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 50;
+            autoScroll = atBottom;
+            document.getElementById('scroll-btn').classList.toggle('visible', !atBottom);
+        });
+
+        // Tunnel list polling (every 5 seconds)
+        function refreshTunnels() {
+            fetch('/api/tunnels')
+                .then(r => r.json())
+                .then(data => renderTunnels(data.tunnels || []))
+                .catch(() => { }); // silently ignore
+        }
+
+        function renderTunnels(tunnels) {
+            const list = document.getElementById('tunnel-list');
+            if (!tunnels.length) {
+                list.innerHTML = `
+          <div style="text-align:center;color:var(--text-dim);padding:40px 0;font-size:12px">
+            No active tunnels<br/>
+            <code style="color:var(--cyan);font-size:11px">tunr share --port 3000</code>
+          </div>`;
+                return;
+            }
+
+            list.innerHTML = tunnels.map(t => `
+        <div class="tunnel-card">
+          <div class="tunnel-card-header">
+            <span class="tunnel-port">:${t.local_port}</span>
+            <span class="tunnel-status ${t.status !== 'active' ? t.status : ''}"></span>
+          </div>
+          <div class="tunnel-url">
+            <a href="${t.public_url}" target="_blank">${t.public_url}</a>
+          </div>
+          <div class="tunnel-meta">
+            <span>${t.request_count || 0} requests</span>
+            <span>${t.id}</span>
+          </div>
+        </div>
+      `).join('');
+        }
+
+        // Initialize
+        connectWS();
+        refreshTunnels();
+        setInterval(refreshTunnels, 5000);
+    </script>
+</body>
+
+</html>

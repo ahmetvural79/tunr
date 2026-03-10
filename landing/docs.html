@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Documentation | tunr</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="docs.css" />
+</head>
+
+<body>
+
+    <nav style="padding: 16px 24px; margin-bottom: 0; border-bottom: 1px solid var(--border);">
+        <a href="/" class="logo">
+            <span>🚇</span> tunr.sh
+        </a>
+        <div class="nav-links">
+            <a href="/#features">Features</a>
+            <a href="docs.html" style="color:var(--text-primary);font-weight:500;">Docs</a>
+            <a href="https://github.com/tunr-dev/tunr" target="_blank">GitHub</a>
+            <a href="https://app.tunr.sh/login" class="btn btn-primary" style="padding: 6px 12px;">Dashboard</a>
+        </div>
+    </nav>
+
+    <div class="docs-layout">
+        <aside class="docs-sidebar">
+            <div class="sidebar-category">Getting Started</div>
+            <nav class="sidebar-nav">
+                <a href="#quickstart" class="active">Quickstart</a>
+                <a href="#cli">CLI Reference</a>
+                <a href="#config">Configuration</a>
+            </nav>
+
+            <div class="sidebar-category">Vibecoder Features</div>
+            <nav class="sidebar-nav">
+                <a href="#freeze">Freeze Mode</a>
+                <a href="#demo">Read-only Demo Mode</a>
+                <a href="#widget">Feedback Widget</a>
+            </nav>
+
+            <div class="sidebar-category">Advanced</div>
+            <nav class="sidebar-nav">
+                <a href="#password">Password Protection</a>
+                <a href="#ttl">Auto-Expiring Tunnels</a>
+                <a href="#routing">Path Routing</a>
+                <a href="#mcp">MCP / Cursor</a>
+                <a href="#inspector">HTTP Inspector</a>
+                <a href="#architecture">Architecture</a>
+            </nav>
+        </aside>
+
+        <main class="docs-content">
+            <h1>Tunr Documentation</h1>
+            <p>Tunr exposes your local development server to the internet in < 3 seconds with automatic HTTPS, WebSocket
+                    support, and zero configuration. It's a developer-first alternative to ngrok and Cloudflare
+                    Tunnel.</p>
+
+                    <div class="docs-alert">
+                        <div class="docs-alert-icon">💡</div>
+                        <p><strong>Note:</strong> tunr is a single static Go binary. It doesn't rely on Node.js or
+                            Python to run, and the CLI is fully open-source.</p>
+                    </div>
+
+                    <h2 id="quickstart">Quickstart</h2>
+                    <p>Install via Homebrew or curl, then start sharing immediately.</p>
+                    <pre><code>brew install tunr-dev/tap/tunr
+tunr share --port 3000</code></pre>
+
+                    <h2 id="cli">CLI Reference</h2>
+                    <ul>
+                        <li><code>tunr share -p [port]</code>: Create a public HTTPS tunnel.</li>
+                        <li><code>tunr share -p [port] -s [subdomain]</code>: Use a custom <code>.tunr.sh</code>
+                            subdomain (Pro feature).</li>
+                        <li><code>tunr logs</code>: Stream HTTP request logs in your terminal.</li>
+                        <li><code>tunr open</code>: Open the embedded local HTTP inspector dashboard in your browser.
+                        </li>
+                    </ul>
+
+                    <h2 id="freeze">❄️ Freeze / Snapshot Mode</h2>
+                    <p>If your app crashes (e.g., Node throws an exception, Database disconnects) while demoing to a
+                        client, the freeze mode will intercept the 500 error and serve the last working HTML/CSS/JS
+                        response from memory.</p>
+                    <pre><code>tunr share --port 3000 --freeze</code></pre>
+
+                    <h2 id="demo">🛡️ Read-Only Demo Mode</h2>
+                    <p>Prevents destructive actions. Whenever a client submits a form (POST) or clicks a delete button
+                        (DELETE), the tunr proxy safely intercepts the request, blocks it from hitting your actual local
+                        backend, and returns a simulated success response.</p>
+                    <pre><code>tunr share --port 3000 --demo</code></pre>
+
+                    <h2 id="widget">💬 Feedback Widget Injection</h2>
+                    <p>Every HTML page that passes through the tunnel gets a transparent feedback widget injected via
+                        proxy middleware (no code changes required on your end). Both visual UI feedback and background
+                        JavaScript exceptions are captured.</p>
+
+                    <ul style="margin-top: 16px; margin-bottom: 24px;">
+                        <li><strong>Visual Comments:</strong> Clients can click anywhere on your webpage to drop a pin
+                            and leave a comment about the design or functionality.</li>
+                        <li><strong>JS Error Catching:</strong> Whenever the client's browser throws a JavaScript error
+                            (e.g. <code>Uncaught TypeError</code>), it is silently caught and streamed back to the
+                            server.</li>
+                        <li><strong>Dashboard Viewer:</strong> You can read all aggregated feedback, complete with
+                            timestamps and browser info, in the <a href="https://app.tunr.sh/dashboard/feedback"
+                                style="color: var(--text-primary); text-decoration: underline;">Tunr Dashboard Feedback
+                                page</a>.</li>
+                    </ul>
+
+                    <pre><code>tunr share --port 3000 --inject-widget</code></pre>
+
+                    <h2 id="password">🔒 Password Protection</h2>
+                    <p>Add Basic Authentication to your public URL instantly without writing any code. Keep your
+                        development environments secure from unauthorized access while sharing with clients or third
+                        parties.</p>
+                    <pre><code>tunr share -p 8080 --password "secret"</code></pre>
+
+                    <h2 id="ttl">⏳ Auto-Expiring Tunnels</h2>
+                    <p>Forget to stop a tunnel exposing your local machine? Use a Time-To-Live (TTL). Once the duration
+                        expires, the tunnel daemon safely terminates the connection and shuts down the proxy.</p>
+                    <pre><code>tunr share -p 3000 --ttl 1h30m</code></pre>
+
+                    <h2 id="routing">🔀 Path Routing</h2>
+                    <p>Map different incoming URL paths to different upstream ports on your machine. This is perfect for
+                        testing microservices or serving your frontend and API from a single public proxy domain.</p>
+                    <pre><code>tunr share --route /=3000 --route /api=8080</code></pre>
+
+                    <h2 id="mcp">🤖 Model Context Protocol</h2>
+                    <p>Tunr supports MCP out of the box. Add it to Claude Desktop or Cursor so your AI can manage
+                        tunnels locally.</p>
+                    <pre><code>// .cursor/mcp.json
+{
+  "mcpServers": {
+    "tunr": {
+      "command": "tunr",
+      "args": ["mcp"]
+    }
+  }
+}</code></pre>
+
+        </main>
+    </div>
+
+    <div class="container">
+        <footer
+            style="display: flex; flex-direction: column; align-items: center; text-align: center; padding: 48px 0; border-top: 1px solid var(--border); color: var(--text-dim); margin-top: 64px;">
+            <div class="footer-brand" style="margin-bottom: 24px;">
+                <div
+                    style="display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+                    <span>🚇</span> tunr.sh
+                </div>
+                <p>Built by ahmet vural and <a href="https://theuglycode.com/" target="_blank"
+                        style="color: var(--text-secondary); text-decoration: underline;">theUglyCode</a></p>
+            </div>
+            <div class="footer-links" style="display: flex; gap: 16px; font-size: 14px;">
+                <a href="terms.html" style="color: var(--text-secondary); text-decoration: none;">Terms</a>
+                <a href="privacy.html" style="color: var(--text-secondary); text-decoration: none;">Privacy policy</a>
+                <a href="https://github.com/tunr-dev/tunr"
+                    style="color: var(--text-secondary); text-decoration: none;">GitHub</a>
+            </div>
+        </footer>
+    </div>
+</body>
+
+</html>
