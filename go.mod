@@ -1,6 +1,6 @@
 module github.com/ahmetvural79/tunr
 
-go 1.22
+go 1.24
 
 require (
 	github.com/google/uuid v1.6.0
