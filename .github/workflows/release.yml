@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout (tüm history, not sadece HEAD)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0  # goreleaser changelog için tüm history lazım
 
