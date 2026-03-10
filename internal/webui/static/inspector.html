@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8" />
@@ -504,7 +504,7 @@
             border-bottom: 1px solid var(--border);
         }
 
-        /* JSON syntax highlight — CSS only ile temel renkler */
+        /* JSON syntax highlight — basic colors using CSS only */
         .json-key {
             color: var(--cyan);
         }
@@ -604,36 +604,36 @@
             <span class="nav-tab active">HTTP Inspector</span>
         </div>
         <div class="header-right">
-            <div class="live-badge"><span class="dot" id="live-dot"></span><span id="status-txt">Bağlanıyor...</span>
+            <div class="live-badge"><span class="dot" id="live-dot"></span><span id="status-txt">Connecting...</span>
             </div>
-            <button class="btn-xs danger" onclick="clearAll()">🗑 Temizle</button>
-            <button class="btn-xs" id="btn-pause" onclick="togglePause()">⏸ Duraklat</button>
-            <span id="req-count" style="font-size:12px;color:var(--text-dim)">0 istek</span>
+            <button class="btn-xs danger" onclick="clearAll()">🗑 Clear</button>
+            <button class="btn-xs" id="btn-pause" onclick="togglePause()">⏸ Pause</button>
+            <span id="req-count" style="font-size:12px;color:var(--text-dim)">0 requests</span>
         </div>
     </div>
 
     <div class="main">
 
-        <!-- SOL: İSTEK LİSTESİ -->
+        <!-- LEFT: REQUEST LIST -->
         <div class="req-list-panel">
             <div class="toolbar">
-                <input class="search-box" id="search" placeholder="Filtrele: path, method, status..." />
+                <input class="search-box" id="search" placeholder="Filter: path, method, status..." />
             </div>
             <div class="req-list" id="req-list">
                 <div class="empty-list">
-                    İstek bekleniyor...<br />
-                    <code>tunr share --port 3000</code><br />
-                    ile bir tunnel başlatın.
+                    Waiting for requests...<br />
+                    Run <code>tunr share --port 3000</code><br />
+                    to start a tunnel.
                 </div>
             </div>
         </div>
 
-        <!-- SAĞ: DETAY PANELİ -->
+        <!-- RIGHT: DETAIL PANEL -->
         <div class="detail-panel" id="detail-panel">
             <div class="detail-empty" id="detail-empty">
                 <div class="icon">← </div>
-                <div style="font-size:14px">Detay görmek için bir istek seçin</div>
-                <div style="font-size:12px;color:var(--text-dim)">Header, body ve timing bilgileri burada görünür</div>
+                <div style="font-size:14px">Select a request to view details</div>
+                <div style="font-size:12px;color:var(--text-dim)">Headers, body, and timing info will appear here</div>
             </div>
             <div id="detail-content" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
                 <!-- Detail Header -->
@@ -650,11 +650,11 @@
 
                 <!-- Detail Tabs -->
                 <div class="detail-tabs">
-                    <span class="detail-tab active" data-pane="req-headers" onclick="switchPane(this)">İstek
+                    <span class="detail-tab active" data-pane="req-headers" onclick="switchPane(this)">Request
                         Headers</span>
-                    <span class="detail-tab" data-pane="req-body" onclick="switchPane(this)">İstek Body</span>
-                    <span class="detail-tab" data-pane="resp-headers" onclick="switchPane(this)">Yanıt Headers</span>
-                    <span class="detail-tab" data-pane="resp-body" onclick="switchPane(this)">Yanıt Body</span>
+                    <span class="detail-tab" data-pane="req-body" onclick="switchPane(this)">Request Body</span>
+                    <span class="detail-tab" data-pane="resp-headers" onclick="switchPane(this)">Response Headers</span>
+                    <span class="detail-tab" data-pane="resp-body" onclick="switchPane(this)">Response Body</span>
                     <span class="detail-tab" data-pane="curl-export" onclick="switchPane(this)">curl</span>
                 </div>
 
@@ -675,7 +675,7 @@
                 </div>
                 <div class="detail-pane" id="pane-curl-export">
                     <div class="curl-box">
-                        <button class="btn-copy" onclick="copyCurlBox()">Kopyala</button>
+                        <button class="btn-copy" onclick="copyCurlBox()">Copy</button>
                         <code id="curl-content"></code>
                     </div>
                 </div>
@@ -685,15 +685,15 @@
 
     <script>
         // ── INSPECTOR JS ──
-        // Gerçek zamanlı HTTP inspector.
-        // Seçilen isteğin header'larını, body'sini ve curl karşılığını gösterir.
+        // Real-time HTTP inspector.
+        // Shows headers, body, and curl equivalent of the selected request.
 
-        let allRequests = [];   // tüm yakalanan istekler
-        let selectedID = null;  // şu an seçili istek ID'si
+        let allRequests = [];   // all captured requests
+        let selectedID = null;  // currently selected request ID
         let paused = false;
         let ws = null;
 
-        // API'den mevcut istekleri yükle
+        // Load existing requests from API
         async function loadRequests() {
             try {
                 const r = await fetch('/api/v1/requests');
@@ -701,15 +701,15 @@
                 allRequests = data.requests || [];
                 renderList();
             } catch (e) {
-                console.warn('İstekler yüklenemedi:', e);
+                console.warn('Failed to load requests:', e);
             }
         }
 
-        // WebSocket ile canlı güncelleme
+        // Live updates via WebSocket
         function connectWS() {
             const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${proto}//${location.host}/api/ws/logs`);
-            ws.onopen = () => updateStatus('Canlı', true);
+            ws.onopen = () => updateStatus('Live', true);
             ws.onmessage = (e) => {
                 if (paused) return;
                 try {
@@ -719,10 +719,10 @@
                 } catch { }
             };
             ws.onclose = () => {
-                updateStatus('Yeniden bağlanıyor...', false);
+                updateStatus('Reconnecting...', false);
                 setTimeout(connectWS, 2000);
             };
-            ws.onerror = () => updateStatus('Bağlantı hatası', false);
+            ws.onerror = () => updateStatus('Connection error', false);
         }
 
         function updateStatus(msg, ok) {
@@ -730,9 +730,9 @@
             document.getElementById('live-dot').style.background = ok ? 'var(--green)' : 'var(--yellow)';
         }
 
-        // Yeni istek ekle / mevcut istekleri render et
+        // Add new request / render existing requests
         function addRequest(entry) {
-            // Normalleştir
+            // Normalize
             const req = {
                 id: entry.id || generateID(),
                 method: entry.method || 'GET',
@@ -747,7 +747,7 @@
                 is_json: entry.is_json || false,
             };
 
-            allRequests.unshift(req); // en başa ekle (yeniden eskiye)
+            allRequests.unshift(req); // prepend (newest first)
             if (allRequests.length > 1000) allRequests.pop();
 
             renderList();
@@ -763,17 +763,17 @@
             );
 
             const list = document.getElementById('req-list');
-            document.getElementById('req-count').textContent = `${filtered.length} istek`;
+            document.getElementById('req-count').textContent = `${filtered.length} requests`;
 
             if (!filtered.length) {
-                list.innerHTML = '<div class="empty-list">Eşleşen istek yok.</div>';
+                list.innerHTML = '<div class="empty-list">No matching requests.</div>';
                 return;
             }
 
             list.innerHTML = filtered.map(req => {
                 const cls = methodClass(req.method);
                 const sCls = statusClass(req.status_code);
-                const time = new Date(req.timestamp).toLocaleTimeString('tr-TR');
+                const time = new Date(req.timestamp).toLocaleTimeString('en-US');
                 const dur = `${req.duration_ms}ms`;
 
                 return `
@@ -793,18 +793,18 @@
             }).join('');
         }
 
-        // İstek detay paneli aç
+        // Open request detail panel
         function selectRequest(id) {
             selectedID = id;
             const req = allRequests.find(r => r.id === id);
             if (!req) return;
 
-            // Sol paneli güncelle
+            // Update left panel
             document.querySelectorAll('.req-item').forEach(el => el.classList.remove('selected'));
             const item = document.getElementById(`item-${id}`);
             if (item) item.classList.add('selected');
 
-            // Detay paneli göster
+            // Show detail panel
             document.getElementById('detail-empty').style.display = 'none';
             const dc = document.getElementById('detail-content');
             dc.style.display = 'flex';
@@ -830,14 +830,14 @@
             // Response body
             renderBody('resp-body-content', 'resp-body-size', req.resp_body, req.resp_body_len, req.is_json);
 
-            // curl export (fetch'le al)
+            // curl export (fetched from server)
             fetchCurl(id);
         }
 
         function renderHeadersTable(tableId, headers) {
             const tbl = document.getElementById(tableId);
             if (!headers || !Object.keys(headers).length) {
-                tbl.parentElement.innerHTML = '<div class="body-empty">Header yok</div>';
+                tbl.parentElement.innerHTML = '<div class="body-empty">No headers</div>';
                 return;
             }
             tbl.innerHTML = Object.entries(headers).map(([k, v]) => {
@@ -845,7 +845,7 @@
                 return `
         <tr>
           <td>${k}</td>
-          <td class="${isRedacted ? 'redacted' : ''}">${isRedacted ? '🔒 gizlendi' : escapeHTML(v)}</td>
+          <td class="${isRedacted ? 'redacted' : ''}">${isRedacted ? '🔒 redacted' : escapeHTML(v)}</td>
         </tr>
       `;
             }).join('');
@@ -856,7 +856,7 @@
             const contentEl = document.getElementById(contentId);
 
             if (!body || body.trim() === '') {
-                contentEl.innerHTML = '<div class="body-empty" style="color:var(--text-dim)">Body boş</div>';
+                contentEl.innerHTML = '<div class="body-empty" style="color:var(--text-dim)">Empty body</div>';
                 sizeEl.textContent = '';
                 return;
             }
@@ -882,7 +882,7 @@
                 const text = await r.text();
                 document.getElementById('curl-content').textContent = text;
             } catch (e) {
-                document.getElementById('curl-content').textContent = '# curl export alınamadı';
+                document.getElementById('curl-content').textContent = '# Could not export curl command';
             }
         }
 
@@ -896,20 +896,20 @@
         async function replayRequest() {
             if (!selectedID) return;
             const btn = document.querySelector('.btn-replay');
-            btn.textContent = '↩ Gönderiliyor...';
+            btn.textContent = '↩ Replaying...';
             btn.disabled = true;
             try {
                 const r = await fetch(`/api/v1/requests/${selectedID}?action=replay`, { method: 'POST' });
                 const data = await r.json();
                 btn.textContent = `↩ ${data.status_code} (${data.duration_ms}ms)`;
             } catch (e) {
-                btn.textContent = '↩ Hata!';
+                btn.textContent = '↩ Error!';
             }
             setTimeout(() => { btn.textContent = '↩ Replay'; btn.disabled = false; }, 2000);
         }
 
         function copyCurl() {
-            // curl paneline geç
+            // Switch to curl pane
             document.querySelectorAll('.detail-tab')[4]?.click();
         }
 
@@ -917,8 +917,8 @@
             const text = document.getElementById('curl-content').textContent;
             navigator.clipboard.writeText(text).then(() => {
                 const btn = document.querySelector('.btn-copy');
-                btn.textContent = '✓ Kopyalandı';
-                setTimeout(() => btn.textContent = 'Kopyala', 1500);
+                btn.textContent = '✓ Copied';
+                setTimeout(() => btn.textContent = 'Copy', 1500);
             });
         }
 
@@ -934,11 +934,11 @@
         function togglePause() {
             paused = !paused;
             const btn = document.getElementById('btn-pause');
-            btn.textContent = paused ? '▶ Devam' : '⏸ Duraklat';
+            btn.textContent = paused ? '▶ Resume' : '⏸ Pause';
             btn.style.color = paused ? 'var(--yellow)' : '';
         }
 
-        // Filtre
+        // Filter
         let filterTimer;
         document.getElementById('search').addEventListener('input', () => {
             clearTimeout(filterTimer);
@@ -972,7 +972,7 @@
             return Math.random().toString(36).slice(2, 10);
         }
 
-        // JSON syntax highlight — regex tabanlı, basit ama işe yarar
+        // JSON syntax highlight — regex-based, simple but effective
         function syntaxHighlightJSON(json) {
             return escapeHTML(json).replace(
                 /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
@@ -990,7 +990,7 @@
             );
         }
 
-        // Başlat
+        // Initialize
         loadRequests();
         connectWS();
     </script>

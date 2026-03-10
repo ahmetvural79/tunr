@@ -17,18 +17,15 @@ import (
 	"github.com/tunr-dev/tunr/internal/logger"
 )
 
-// HTTP Inspector — gelen ve giden isteklerin tam kopyasını tutar.
-// ngrok'ta "inspector" ekranı gördünüz mü? İşte o.
-// Prod sunucuya çarpmadan önce ne geldiğini görmek: priceless.
+// HTTP Inspector — full-body capture for every request and response.
+// Think ngrok's inspect tab, but ours. Seeing what hits your server before prod does: priceless.
 
-// CapturedRequest — yakalanmış bir HTTP isteğinin tam kaydı
+// CapturedRequest is a complete snapshot of an HTTP round-trip
 type CapturedRequest struct {
-	// Kimlik ve zaman
 	ID        string    `json:"id"`
 	TunnelID  string    `json:"tunnel_id"`
 	Timestamp time.Time `json:"timestamp"`
 
-	// İstek bilgileri
 	Method     string            `json:"method"`
 	URL        string            `json:"url"`
 	Path       string            `json:"path"`
@@ -37,40 +34,34 @@ type CapturedRequest struct {
 	ReqBody    string            `json:"req_body"`   // max 64KB
 	ReqBodyLen int64             `json:"req_body_len"`
 	
-	// Yanıt bilgileri
 	StatusCode  int               `json:"status_code"`
 	RespHeaders map[string]string `json:"resp_headers"`
 	RespBody    string            `json:"resp_body"`   // max 64KB
 	RespBodyLen int64             `json:"resp_body_len"`
 	
-	// Performans
 	DurationMs int64  `json:"duration_ms"`
 	
-	// İçerik tipi — dashboard için
 	ContentType string `json:"content_type"`
 	IsJSON      bool   `json:"is_json"`
 }
 
-// Inspector — istek/yanıt middleware + ring buffer
+// Inspector is the request/response capture middleware backed by a ring buffer
 type Inspector struct {
 	mu       sync.RWMutex
 	requests []*CapturedRequest
 	maxSize  int
 
-	// Abone sayacı (kaç WS client canlı log alıyor)
-	subscribers atomic.Int32
+	subscribers atomic.Int32 // how many WS clients are streaming live logs
+	totalCount  atomic.Int64 // lifetime request counter
 
-	// Kanıt: bu middleware'den kaç istek geçti
-	totalCount atomic.Int64
-
-	// Log callback — yeni istek gelince webui'ye bildir
+	// fires when a new request is captured — used to push to the web UI
 	OnNewRequest func(req *CapturedRequest)
 }
 
-// New — inspector oluştur
+// New creates an inspector with the given ring buffer capacity
 func New(ringSize int) *Inspector {
 	if ringSize <= 0 {
-		ringSize = 1000 // default: son 1000 isteği sakla
+		ringSize = 1000
 	}
 	return &Inspector{
 		requests: make([]*CapturedRequest, 0, ringSize),
@@ -78,41 +69,36 @@ func New(ringSize int) *Inspector {
 	}
 }
 
-// Middleware — bu fonksiyonu proxy handler'a sar
-// İsteği ve yanıtı yakalar, ring buffer'a yazar
+// Middleware wraps a handler to capture requests and responses into the ring buffer
 func (ins *Inspector) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		id := uuid.New().String()[:8]
 
-		// ── İSTEK YAKALAMA ──
-		
-		// Request body'yi oku (ama upstream'e de iletmeye devam et)
+		// ── REQUEST CAPTURE ──
+
 		var reqBodyBuf bytes.Buffer
 		var reqBodyLen int64
 		if r.Body != nil {
-			// Max 64KB body oku — daha büyük body'leri upstream'e ileteriz ama kaydetmeyiz
+			// capture up to 64KB — bigger bodies still get forwarded, just not recorded
 			limitedBody := io.LimitReader(r.Body, 64*1024)
 			reqBodyLen, _ = io.Copy(&reqBodyBuf, limitedBody)
-			// Gzip decode?
 			if r.Header.Get("Content-Encoding") == "gzip" {
 				reqBodyBuf = decodeGzip(reqBodyBuf)
 			}
-			// Body'yi geri koy (upstream handler okuyabilsin)
+			// reassemble the body so upstream can still read it
 			r.Body = io.NopCloser(io.MultiReader(
 				bytes.NewReader(reqBodyBuf.Bytes()),
-				r.Body, // varsa kalan kısım (64KB üstü)
+				r.Body, // remainder beyond 64KB, if any
 			))
 		}
 
-		// GÜVENLİK: Request header'larını maskele
-		// Authorization, Cookie, X-API-Key gibi hassas header'ları loglamıyoruz
+		// SECURITY: mask sensitive headers before we store anything
 		reqHeaders := sanitizeHeaders(r.Header)
 
-		// ── YANIT YAKALAMA ──
+		// ── RESPONSE CAPTURE ──
 		rw := newResponseWriter(w)
 
-		// Downstream handler'a ilet
 		next.ServeHTTP(rw, r)
 
 		// Timing
@@ -125,15 +111,14 @@ func (ins *Inspector) Middleware(next http.Handler) http.Handler {
 			respBody = buf.Bytes()
 		}
 
-		// Max 64KB response body sakla
+		// only keep response bodies up to 64KB
 		respBodyStr := ""
 		if len(respBody) <= 64*1024 {
 			respBodyStr = string(respBody)
 		} else {
-			respBodyStr = fmt.Sprintf("[%d bytes — çok büyük, sadece ilk 64KB]", len(respBody))
+			respBodyStr = fmt.Sprintf("[%d bytes — too large, only first 64KB stored]", len(respBody))
 		}
 
-		// İçerik tipi belirle
 		ct := rw.Header().Get("Content-Type")
 		isJSON := strings.Contains(ct, "application/json")
 
@@ -166,19 +151,18 @@ func (ins *Inspector) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// add — ring buffer'a yeni kayıt ekle
+// add appends to the ring buffer, evicting the oldest entry if full
 func (ins *Inspector) add(req *CapturedRequest) {
 	ins.mu.Lock()
 	defer ins.mu.Unlock()
 
-	// Ring: eski en baştan sil
 	if len(ins.requests) >= ins.maxSize {
 		ins.requests = ins.requests[1:]
 	}
 	ins.requests = append(ins.requests, req)
 }
 
-// GetAll — tüm kayıtları getir (en yeniden eski)
+// GetAll returns all captured requests (newest first)
 func (ins *Inspector) GetAll() []*CapturedRequest {
 	ins.mu.RLock()
 	defer ins.mu.RUnlock()
@@ -188,7 +172,7 @@ func (ins *Inspector) GetAll() []*CapturedRequest {
 	return result
 }
 
-// GetByID — ID ile belirli bir kaydı getir
+// GetByID looks up a single captured request
 func (ins *Inspector) GetByID(id string) (*CapturedRequest, error) {
 	ins.mu.RLock()
 	defer ins.mu.RUnlock()
@@ -198,17 +182,17 @@ func (ins *Inspector) GetByID(id string) (*CapturedRequest, error) {
 			return req, nil
 		}
 	}
-	return nil, fmt.Errorf("istek bulunamadı: %s", id)
+	return nil, fmt.Errorf("request not found: %s", id)
 }
 
-// Clear — ring buffer'ı temizle
+// Clear wipes the ring buffer clean
 func (ins *Inspector) Clear() {
 	ins.mu.Lock()
 	ins.requests = ins.requests[:0]
 	ins.mu.Unlock()
 }
 
-// Stats — inspector istatistikleri
+// Stats returns a snapshot of inspector metrics
 func (ins *Inspector) Stats() map[string]interface{} {
 	ins.mu.RLock()
 	count := len(ins.requests)
@@ -223,15 +207,14 @@ func (ins *Inspector) Stats() map[string]interface{} {
 
 // ─── REQUEST REPLAY ────────────────────────────────────────────────────────
 
-// Replay — kaydedilen bir isteği tekrar local port'a gönder
+// Replay re-sends a captured request to the local port — great for debugging
 func (ins *Inspector) Replay(ctx context.Context, id string, localPort int) (*ReplayResult, error) {
 	captured, err := ins.GetByID(id)
 	if err != nil {
 		return nil, err
 	}
 
-	// GÜVENLİK: replay sadece localhost'a gönderilir
-	// Dışarıya istek gönderme riski yok
+	// SECURITY: replay only targets localhost — no risk of leaking to the outside
 	localURL := fmt.Sprintf("http://localhost:%d%s", localPort, captured.Path)
 	if captured.URL != "" && strings.Contains(captured.URL, "?") {
 		localURL += "?" + strings.SplitN(captured.URL, "?", 2)[1]
@@ -244,10 +227,10 @@ func (ins *Inspector) Replay(ctx context.Context, id string, localPort int) (*Re
 
 	req, err := http.NewRequestWithContext(ctx, captured.Method, localURL, bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("replay isteği oluşturulamadı: %w", err)
+		return nil, fmt.Errorf("failed to build replay request: %w", err)
 	}
 
-	// Header'ları geri koy (hassas olanlar zaten sanitize edilmişti)
+	// re-attach headers (sensitive ones were already redacted)
 	for key, val := range captured.ReqHeaders {
 		req.Header.Set(key, val)
 	}
@@ -256,7 +239,7 @@ func (ins *Inspector) Replay(ctx context.Context, id string, localPort int) (*Re
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("replay gönderilirken hata: %w", err)
+		return nil, fmt.Errorf("replay failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -270,7 +253,7 @@ func (ins *Inspector) Replay(ctx context.Context, id string, localPort int) (*Re
 	}, nil
 }
 
-// ReplayResult — replay sonucu
+// ReplayResult holds what came back from a replayed request
 type ReplayResult struct {
 	OriginalID string `json:"original_id"`
 	StatusCode int    `json:"status_code"`
@@ -278,7 +261,7 @@ type ReplayResult struct {
 	Body       string `json:"body"`
 }
 
-// ExportCurl — kaydedilen isteği curl komutu olarak export et
+// ExportCurl converts a captured request into a copy-pasteable curl command
 func (ins *Inspector) ExportCurl(id string) (string, error) {
 	captured, err := ins.GetByID(id)
 	if err != nil {
@@ -290,8 +273,7 @@ func (ins *Inspector) ExportCurl(id string) (string, error) {
 	sb.WriteString(fmt.Sprintf(" \\\n  '%s'", captured.URL))
 
 	for key, val := range captured.ReqHeaders {
-		// GÜVENLİK: Authorization header'ını curl export'una dahil etme
-		// Kullanıcı token'ını yanlışlıkla paylaşmasın
+		// SECURITY: redact auth headers so users don't accidentally share tokens
 		if strings.EqualFold(key, "authorization") || strings.EqualFold(key, "cookie") {
 			sb.WriteString(fmt.Sprintf(" \\\n  -H '%s: [REDACTED]'", key))
 			continue
@@ -309,10 +291,9 @@ func (ins *Inspector) ExportCurl(id string) (string, error) {
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
-// sanitizeHeaders — hassas header'ları maskele
-// GÜVENLİK: Bu cidden önemli. Auth token'ları log'a geçmesin.
+// sanitizeHeaders redacts sensitive headers.
+// SECURITY: this is critical — auth tokens must never end up in logs or captures.
 func sanitizeHeaders(headers http.Header) map[string]string {
-	// Bu header'lar tamamen gizlenir
 	sensitiveHeaders := map[string]bool{
 		"authorization": true,
 		"cookie":        true,
@@ -337,11 +318,11 @@ func sanitizeHeaders(headers http.Header) map[string]string {
 	return result
 }
 
-// decodeGzip — gzip sıkıştırılmış veriyi aç
+// decodeGzip decompresses gzip-encoded data, falling back to raw on failure
 func decodeGzip(buf bytes.Buffer) bytes.Buffer {
 	reader, err := gzip.NewReader(&buf)
 	if err != nil {
-		return buf // decode edilemedi, orijinali döndür
+		return buf // can't decode, return as-is
 	}
 	defer reader.Close()
 
@@ -350,7 +331,7 @@ func decodeGzip(buf bytes.Buffer) bytes.Buffer {
 	return decoded
 }
 
-// responseWriter — http.ResponseWriter wrapper, body ve status code'u yakalar
+// responseWriter wraps http.ResponseWriter to capture status code and body
 type responseWriter struct {
 	http.ResponseWriter
 	statusCode int
@@ -367,15 +348,15 @@ func (rw *responseWriter) WriteHeader(code int) {
 }
 
 func (rw *responseWriter) Write(b []byte) (int, error) {
-	rw.bodyBuf.Write(b) // kopyasını tut
-	return rw.ResponseWriter.Write(b) // ileriye ilet
+	rw.bodyBuf.Write(b)
+	return rw.ResponseWriter.Write(b)
 }
 
-// PrettyJSON — JSON body'sini güzel formatta döndür (dashboard için)
+// PrettyJSON formats a JSON string with indentation for the dashboard
 func PrettyJSON(raw string) string {
 	var v interface{}
 	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		return raw // JSON değil, olduğu gibi döndür
+		return raw // not valid JSON, return as-is
 	}
 	pretty, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -384,5 +365,4 @@ func PrettyJSON(raw string) string {
 	return string(pretty)
 }
 
-// Warn - bağlantı log'u (inspector kullanımını bildir)
-var _ = logger.Info // logger'ı referans et, lint hata vermesin
+var _ = logger.Info // keep the import alive for linter

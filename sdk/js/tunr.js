@@ -1,7 +1,7 @@
 /**
  * @tunr/sdk — JavaScript/TypeScript SDK
  * 
- * tunr CLI'ı Node.js uygulamalarından programatik kullanın.
+ * Use the tunr CLI programmatically from Node.js applications.
  * 
  * @example
  * import { TunrClient } from '@tunr/sdk';
@@ -10,7 +10,7 @@
  * const tunnel = await tunr.share(3000);
  * console.log(tunnel.publicUrl); // https://abc123.tunr.sh
  * 
- * // Express/Next.js test sunucusu için:
+ * // For Express/Next.js test servers:
  * const url = await tunr.shareServer(app, { port: 3000 });
  */
 
@@ -23,9 +23,9 @@ const https = require('https');
 class TunrClient {
     /**
      * @param {Object} options
-     * @param {string} [options.token] - Auth token (opsiyonel)
-     * @param {string} [options.binary='tunr'] - tunr binary yolu
-     * @param {number} [options.dashPort=19842] - Inspector dashboard portu
+     * @param {string} [options.token] - Auth token (optional)
+     * @param {string} [options.binary='tunr'] - Path to the tunr binary
+     * @param {number} [options.dashPort=19842] - Inspector dashboard port
      */
     constructor(options = {}) {
         this.token = options.token;
@@ -35,16 +35,16 @@ class TunrClient {
     }
 
     /**
-     * Local portu public URL olarak paylaş
-     * @param {number} port - Local port (örn: 3000)
-     * @param {Object} [opts] - Seçenekler
-     * @param {string} [opts.subdomain] - Tercih edilen subdomain
-     * @param {number} [opts.timeout=15000] - Tunnel başlama süre aşımı (ms)
+     * Share a local port as a public URL
+     * @param {number} port - Local port (e.g. 3000)
+     * @param {Object} [opts] - Options
+     * @param {string} [opts.subdomain] - Preferred subdomain
+     * @param {number} [opts.timeout=15000] - Tunnel startup timeout (ms)
      * @returns {Promise<Tunnel>}
      */
     async share(port, opts = {}) {
         if (port < 1024 || port > 65535) {
-            throw new Error(`Geçersiz port: ${port} (1024-65535 arası)`);
+            throw new Error(`Invalid port: ${port} (must be between 1024-65535)`);
         }
 
         const args = ['share', '--port', String(port), '--no-open'];
@@ -59,7 +59,7 @@ class TunrClient {
             const timeout = setTimeout(() => {
                 if (!resolved) {
                     proc.kill();
-                    reject(new Error('Tunnel 15 saniyede başlamadı. `tunr doctor` çalıştırın.'));
+                    reject(new Error('Tunnel failed to start within 15 seconds. Run `tunr doctor`.'));
                 }
             }, opts.timeout || 15000);
 
@@ -79,21 +79,21 @@ class TunrClient {
 
             proc.on('error', (err) => {
                 clearTimeout(timeout);
-                reject(new Error(`tunr başlatılamadı: ${err.message}. PATH'te tunr var mı?`));
+                reject(new Error(`Failed to start tunr: ${err.message}. Is tunr in your PATH?`));
             });
 
             proc.on('exit', (code) => {
                 clearTimeout(timeout);
                 if (!resolved) {
-                    reject(new Error(`tunr beklenmedik çıktı (exit ${code})`));
+                    reject(new Error(`tunr exited unexpectedly (exit ${code})`));
                 }
             });
         });
     }
 
     /**
-     * HTTP server'ı paylaş (Express, Fastify, Next.js için)
-     * @param {http.Server|Object} server - http.Server veya Express app
+     * Share an HTTP server (for Express, Fastify, Next.js)
+     * @param {http.Server|Object} server - http.Server or Express app
      * @param {Object} [opts]
      * @param {number} [opts.port=3000]
      * @returns {Promise<string>} Public URL
@@ -106,7 +106,7 @@ class TunrClient {
     async shareServer(server, opts = {}) {
         const port = opts.port || 3000;
 
-        // Express app ise dinleme başlat
+        // If it's an Express app, start listening
         if (typeof server.listen === 'function' && !server.listening) {
             await new Promise((resolve) => server.listen(port, resolve));
         }
@@ -116,7 +116,7 @@ class TunrClient {
     }
 
     /**
-     * Son HTTP isteklerini getir
+     * Fetch recent HTTP requests
      * @param {number} [limit=10]
      * @returns {Promise<Array>}
      */
@@ -145,7 +145,7 @@ class TunrClient {
     }
 
     /**
-     * Tüm aktif tunnel'ları kapat
+     * Close all active tunnels
      */
     async closeAll() {
         await Promise.all(this._activeTunnels.map((t) => t.close()));
@@ -154,7 +154,7 @@ class TunrClient {
 }
 
 /**
- * Aktif bir tunnel
+ * An active tunnel
  */
 class Tunnel {
     constructor(publicUrl, localPort, process) {
@@ -163,17 +163,17 @@ class Tunnel {
         this._process = process;
         this._closed = false;
 
-        // Process kapanınca işaretle
+        // Mark as closed when the process exits
         process.on('exit', () => { this._closed = true; });
     }
 
-    /** Tunnel URL'si */
+    /** Tunnel URL */
     get url() { return this.publicUrl; }
 
-    /** Tunnel aktif mi? */
+    /** Is the tunnel alive? */
     get isAlive() { return !this._closed; }
 
-    /** Tunnel'ı kapat */
+    /** Close the tunnel */
     async close() {
         if (this._process && !this._closed) {
             this._process.kill('SIGTERM');
@@ -187,18 +187,18 @@ module.exports = { TunrClient, Tunnel };
 // ─── Jest/Vitest Test Helper ──────────────────────────────────────────────────
 
 /**
- * Jest/Vitest entegrasyon test yardımcısı
+ * Jest/Vitest integration test helper
  * 
  * @example
  * // jest.setup.js:
  * import { withTunnel } from '@tunr/sdk/test';
  * 
- * describe('Webhook testi', () => {
+ * describe('Webhook test', () => {
  *   let tunnelURL;
  *   
  *   beforeAll(async () => {
  *     tunnelURL = await withTunnel(3000, async (url) => {
- *       // Stripe/Paddle webhook endpoint'ini ayarla
+ *       // Set up the Stripe/Paddle webhook endpoint
  *       await stripe.webhooks.update({ url });
  *     });
  *   });

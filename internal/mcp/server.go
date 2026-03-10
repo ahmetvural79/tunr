@@ -13,29 +13,29 @@ import (
 	"github.com/tunr-dev/tunr/internal/logger"
 )
 
-// MCP — Model Context Protocol sunucusu.
-// Claude, Cursor, Windsurf ve di??er AI araçlar? buna ba?lan?r.
-// "tunr AI'ya tunnel açt?r" dersin, o da açar. Bu kadar.
+// MCP (Model Context Protocol) server.
+// Claude, Cursor, Windsurf, and other AI tools connect here.
+// "tunr, open a tunnel" — and it does. That's it.
 //
-// Protokol: JSON-RPC 2.0 üzerinden stdio transport.
-// Hiç konfigürasyon gerekmez — sadece binary'ye i?aret et.
+// Protocol: JSON-RPC 2.0 over stdio transport.
+// Zero config needed — just point the AI tool at the binary.
 //
-// claude_desktop_config.json örne?i:
-//   {
-//     "mcpServers": {
-//       "tunr": {
-//         "command": "/usr/local/bin/tunr",
-//         "args": ["mcp"]
-//       }
-//     }
-//   }
+// claude_desktop_config.json example:
+//
+//	{
+//	  "mcpServers": {
+//	    "tunr": {
+//	      "command": "/usr/local/bin/tunr",
+//	      "args": ["mcp"]
+//	    }
+//	  }
+//	}
 
-// Tool tanımları — MCP Inspector'da görünecek
 const ServerName = "tunr"
 const ServerVersion = "0.1.0"
 const ProtocolVersion = "2024-11-05"
 
-// JSONRPCRequest — gelen JSON-RPC isteği
+// JSONRPCRequest is an inbound JSON-RPC message
 type JSONRPCRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      interface{}     `json:"id"`
@@ -43,7 +43,7 @@ type JSONRPCRequest struct {
 	Params  json.RawMessage `json:"params,omitempty"`
 }
 
-// JSONRPCResponse — giden JSON-RPC yanıtı
+// JSONRPCResponse is an outbound JSON-RPC message
 type JSONRPCResponse struct {
 	JSONRPC string      `json:"jsonrpc"`
 	ID      interface{} `json:"id"`
@@ -51,21 +51,21 @@ type JSONRPCResponse struct {
 	Error   *RPCError   `json:"error,omitempty"`
 }
 
-// RPCError — JSON-RPC hata objesi
+// RPCError represents a JSON-RPC error object
 type RPCError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 }
 
-// Server — MCP sunucusu
+// Server is the MCP protocol server
 type Server struct {
-	ins       *inspector.Inspector
+	ins        *inspector.Inspector
 	getTunnels func() []TunnelInfo
-	in        io.Reader
-	out       io.Writer
+	in         io.Reader
+	out        io.Writer
 }
 
-// TunnelInfo — MCP tool yanıtı için tunnel özeti
+// TunnelInfo is a lightweight tunnel summary for MCP tool responses
 type TunnelInfo struct {
 	ID        string `json:"id"`
 	LocalPort int    `json:"local_port"`
@@ -73,7 +73,7 @@ type TunnelInfo struct {
 	Status    string `json:"status"`
 }
 
-// New — MCP sunucu oluştur
+// New creates an MCP server wired to the inspector and tunnel manager
 func New(ins *inspector.Inspector, getTunnels func() []TunnelInfo) *Server {
 	return &Server{
 		ins:        ins,
@@ -83,13 +83,12 @@ func New(ins *inspector.Inspector, getTunnels func() []TunnelInfo) *Server {
 	}
 }
 
-// Serve — stdio üzerinden JSON-RPC döngüsü başlat
+// Serve runs the JSON-RPC read loop over stdio
 func (s *Server) Serve(ctx context.Context) error {
-	// MCP sunucusu başladı — stderr'e logla (stdout JSON-RPC için ayrıldı)
-	logger.Info("MCP sunucu başlatıldı (stdio transport)")
+	// stdout is reserved for JSON-RPC — log to stderr only
+	logger.Info("MCP server started (stdio transport)")
 
 	scanner := bufio.NewScanner(s.in)
-	// Max satır boyutu: 16MB (büyük body'ler için)
 	scanner.Buffer(make([]byte, 16*1024*1024), 16*1024*1024)
 
 	for {
@@ -101,7 +100,7 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		if !scanner.Scan() {
 			if err := scanner.Err(); err != nil {
-				return fmt.Errorf("stdin okuma hatası: %w", err)
+				return fmt.Errorf("stdin read error: %w", err)
 			}
 			return nil // EOF
 		}
@@ -113,7 +112,6 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		var req JSONRPCRequest
 		if err := json.Unmarshal(line, &req); err != nil {
-			// Parse edilemeyen istek — error response gönder, panic etme
 			s.sendError(nil, -32700, "parse error")
 			continue
 		}
@@ -122,7 +120,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 }
 
-// handle — gelen JSON-RPC isteğini methoduna göre işle
+// handle dispatches a JSON-RPC request by method name
 func (s *Server) handle(req *JSONRPCRequest) {
 	switch req.Method {
 	// ── MCP Lifecycle ──
@@ -139,7 +137,6 @@ func (s *Server) handle(req *JSONRPCRequest) {
 		})
 
 	case "initialized":
-		// Notification — yanıt gerekmez
 		return
 
 	// ── Tools ──
@@ -160,25 +157,25 @@ func (s *Server) handle(req *JSONRPCRequest) {
 	}
 }
 
-// toolList — kullanılabilir tool'ların listesi
-// AI bu listeyi okur ve ne yapabileceğini anlar
+// toolList returns the available MCP tools.
+// AI agents read these descriptions to decide what to call — keep them clear.
 func (s *Server) toolList() []map[string]interface{} {
 	return []map[string]interface{}{
 		{
 			"name":        "tunr_share",
-			"description": "Local bir port'u public HTTPS URL olarak paylaşır. Tunnel anında hazır olur (< 3 saniye). Müşteri demo'su, webhook test, AI uygulaması paylaşımı için ideal.",
+			"description": "Expose a local port as a public HTTPS URL. The tunnel is ready in under 3 seconds. Use this for client demos, webhook testing, or sharing AI apps.",
 			"inputSchema": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"port": map[string]interface{}{
 						"type":        "integer",
-						"description": "Local port numarası (örn: 3000, 8080)",
+						"description": "Local port number (e.g. 3000, 8080)",
 						"minimum":     1024,
 						"maximum":     65535,
 					},
 					"subdomain": map[string]interface{}{
 						"type":        "string",
-						"description": "Özel subdomain (opsiyonel, Pro plan gerektirir)",
+						"description": "Custom subdomain (optional, requires Pro plan)",
 					},
 				},
 				"required": []string{"port"},
@@ -186,7 +183,7 @@ func (s *Server) toolList() []map[string]interface{} {
 		},
 		{
 			"name":        "tunr_status",
-			"description": "Aktif tunnel'ların listesi ve durumları. Hangi URL'in aktif olduğunu görmek için kullanın.",
+			"description": "List all active tunnels and their current status. Shows which public URLs are live.",
 			"inputSchema": map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -194,36 +191,36 @@ func (s *Server) toolList() []map[string]interface{} {
 		},
 		{
 			"name":        "tunr_inspect",
-			"description": "Son HTTP isteklerini listeler. Webhook debug, API çağrılarını inceleme için kullanın.",
+			"description": "List recent HTTP requests captured by the tunnel. Useful for debugging webhooks and inspecting API calls.",
 			"inputSchema": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"limit": map[string]interface{}{
 						"type":        "integer",
-						"description": "Kaç istek getirileceği (varsayılan: 10)",
+						"description": "Number of requests to return (default: 10)",
 						"minimum":     1,
 						"maximum":     100,
 					},
 					"method": map[string]interface{}{
 						"type":        "string",
-						"description": "Filtrele: GET, POST, PUT, DELETE",
+						"description": "Filter by HTTP method: GET, POST, PUT, DELETE",
 					},
 				},
 			},
 		},
 		{
 			"name":        "tunr_replay",
-			"description": "Önceden yakalanmış bir HTTP isteğini tekrar gönderir. ID'yi tunr_inspect'ten alın.",
+			"description": "Replay a previously captured HTTP request against your local server. Get the request ID from tunr_inspect.",
 			"inputSchema": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"request_id": map[string]interface{}{
 						"type":        "string",
-						"description": "Replay edilecek isteğin ID'si",
+						"description": "ID of the request to replay",
 					},
 					"port": map[string]interface{}{
 						"type":        "integer",
-						"description": "Local sunucu portu (varsayılan: 3000)",
+						"description": "Local server port (default: 3000)",
 					},
 				},
 				"required": []string{"request_id"},
@@ -231,13 +228,13 @@ func (s *Server) toolList() []map[string]interface{} {
 		},
 		{
 			"name":        "tunr_stop",
-			"description": "Belirli bir tunnel'ı durdurur.",
+			"description": "Stop a specific tunnel by its ID.",
 			"inputSchema": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"tunnel_id": map[string]interface{}{
 						"type":        "string",
-						"description": "Durdurulacak tunnel ID'si (tunr_status'tan alın)",
+						"description": "Tunnel ID to stop (get it from tunr_status)",
 					},
 				},
 				"required": []string{"tunnel_id"},
@@ -246,7 +243,7 @@ func (s *Server) toolList() []map[string]interface{} {
 	}
 }
 
-// handleToolCall — tool çağrısını işle
+// handleToolCall dispatches an MCP tool invocation
 func (s *Server) handleToolCall(req *JSONRPCRequest) {
 	var params struct {
 		Name      string          `json:"name"`
@@ -274,7 +271,7 @@ func (s *Server) handleToolCall(req *JSONRPCRequest) {
 	}
 }
 
-// ─── Tool Implementasyonları ───────────────────────────────────────────────
+// ─── Tool Implementations ───────────────────────────────────────────────────
 
 func (s *Server) toolShare(id interface{}, args json.RawMessage) {
 	var input struct {
@@ -282,22 +279,20 @@ func (s *Server) toolShare(id interface{}, args json.RawMessage) {
 		Subdomain string `json:"subdomain"`
 	}
 	if err := json.Unmarshal(args, &input); err != nil || input.Port == 0 {
-		s.sendToolError(id, "port parametresi gerekli (örn: 3000)")
+		s.sendToolError(id, "port parameter is required (e.g. 3000)")
 		return
 	}
 
-	// Port validasyonu
 	if input.Port < 1024 || input.Port > 65535 {
-		s.sendToolError(id, fmt.Sprintf("geçersiz port: %d (1024-65535 arası)", input.Port))
+		s.sendToolError(id, fmt.Sprintf("invalid port: %d (must be 1024-65535)", input.Port))
 		return
 	}
 
-	// Gerçek tunnel API'sini çağır (Faz 1'deki tunnel.Manager burada kullanılır)
-	// Şimdilik simüle ediyoruz — Faz 4'te gerçek entegrasyon
+	// Wire up to real tunnel.Manager — simulated for now, real integration in Phase 4
 	publicURL := fmt.Sprintf("https://%x.tunr.sh", time.Now().UnixNano()&0xFFFFFF)
 
 	s.sendToolResult(id, fmt.Sprintf(
-		"✅ Tunnel aktif!\n\n**Public URL:** %s\n**Local Port:** %d\n\nBu URL'yi paylaşabilirsin. `tunr_stop` ile kapatabilirsin.",
+		"✅ Tunnel is live!\n\n**Public URL:** %s\n**Local Port:** %d\n\nShare this URL freely. Use `tunr_stop` to shut it down.",
 		publicURL, input.Port,
 	))
 }
@@ -309,11 +304,11 @@ func (s *Server) toolStatus(id interface{}) {
 	}
 
 	if len(tunnels) == 0 {
-		s.sendToolResult(id, "Aktif tunnel yok.\n\n`tunr_share` ile yeni tunnel aç.")
+		s.sendToolResult(id, "No active tunnels.\n\nUse `tunr_share` to open one.")
 		return
 	}
 
-	msg := fmt.Sprintf("**%d aktif tunnel:**\n\n", len(tunnels))
+	msg := fmt.Sprintf("**%d active tunnel(s):**\n\n", len(tunnels))
 	for _, t := range tunnels {
 		msg += fmt.Sprintf("- `%s` → port %d → **%s** (%s)\n",
 			t.ID, t.LocalPort, t.PublicURL, t.Status)
@@ -326,7 +321,7 @@ func (s *Server) toolInspect(id interface{}, args json.RawMessage) {
 		Limit  int    `json:"limit"`
 		Method string `json:"method"`
 	}
-	json.Unmarshal(args, &input) // hata olursa defaults kullan
+	json.Unmarshal(args, &input)
 	if input.Limit <= 0 {
 		input.Limit = 10
 	}
@@ -335,13 +330,12 @@ func (s *Server) toolInspect(id interface{}, args json.RawMessage) {
 	}
 
 	if s.ins == nil {
-		s.sendToolResult(id, "Inspector devre dışı. Daemon modu gerektirir.")
+		s.sendToolResult(id, "Inspector is disabled. Requires daemon mode.")
 		return
 	}
 
 	requests := s.ins.GetAll()
 
-	// Filtrele
 	var filtered []*inspector.CapturedRequest
 	for _, r := range requests {
 		if input.Method != "" && r.Method != input.Method {
@@ -354,18 +348,18 @@ func (s *Server) toolInspect(id interface{}, args json.RawMessage) {
 	}
 
 	if len(filtered) == 0 {
-		s.sendToolResult(id, "Kayıtlı istek yok. Tunnel'a bir HTTP isteği gönder.")
+		s.sendToolResult(id, "No captured requests yet. Send an HTTP request through the tunnel first.")
 		return
 	}
 
-	msg := fmt.Sprintf("**Son %d HTTP isteği:**\n\n", len(filtered))
-	msg += "| ID | Method | Path | Status | Süre |\n"
-	msg += "|-----|--------|------|--------|------|\n"
+	msg := fmt.Sprintf("**Last %d HTTP request(s):**\n\n", len(filtered))
+	msg += "| ID | Method | Path | Status | Duration |\n"
+	msg += "|-----|--------|------|--------|----------|\n"
 	for _, r := range filtered {
 		msg += fmt.Sprintf("| `%s` | %s | %s | %d | %dms |\n",
 			r.ID, r.Method, r.Path, r.StatusCode, r.DurationMs)
 	}
-	msg += "\n`tunr_replay` ile herhangi birini tekrar gönderebilirsin."
+	msg += "\nUse `tunr_replay` to resend any of these."
 	s.sendToolResult(id, msg)
 }
 
@@ -375,7 +369,7 @@ func (s *Server) toolReplay(id interface{}, args json.RawMessage) {
 		Port      int    `json:"port"`
 	}
 	if err := json.Unmarshal(args, &input); err != nil || input.RequestID == "" {
-		s.sendToolError(id, "request_id parametresi gerekli")
+		s.sendToolError(id, "request_id parameter is required")
 		return
 	}
 	if input.Port == 0 {
@@ -383,18 +377,18 @@ func (s *Server) toolReplay(id interface{}, args json.RawMessage) {
 	}
 
 	if s.ins == nil {
-		s.sendToolError(id, "Inspector devre dışı")
+		s.sendToolError(id, "Inspector is disabled")
 		return
 	}
 
 	result, err := s.ins.Replay(context.Background(), input.RequestID, input.Port)
 	if err != nil {
-		s.sendToolError(id, fmt.Sprintf("Replay başarısız: %v", err))
+		s.sendToolError(id, fmt.Sprintf("Replay failed: %v", err))
 		return
 	}
 
 	s.sendToolResult(id, fmt.Sprintf(
-		"✅ Replay tamamlandı\n\n**Status:** %d\n**Süre:** %dms",
+		"✅ Replay complete\n\n**Status:** %d\n**Duration:** %dms",
 		result.StatusCode, result.DurationMs,
 	))
 }
@@ -404,12 +398,12 @@ func (s *Server) toolStop(id interface{}, args json.RawMessage) {
 		TunnelID string `json:"tunnel_id"`
 	}
 	if err := json.Unmarshal(args, &input); err != nil || input.TunnelID == "" {
-		s.sendToolError(id, "tunnel_id parametresi gerekli")
+		s.sendToolError(id, "tunnel_id parameter is required")
 		return
 	}
 
-	// TODO: tunnel manager üzerinden durdur
-	s.sendToolResult(id, fmt.Sprintf("Tunnel `%s` durduruldu.", input.TunnelID))
+	// TODO: stop via tunnel manager
+	s.sendToolResult(id, fmt.Sprintf("Tunnel `%s` stopped.", input.TunnelID))
 }
 
 // ─── Response Helpers ─────────────────────────────────────────────────────────
@@ -426,7 +420,6 @@ func (s *Server) sendError(id interface{}, code int, message string) {
 	})
 }
 
-// sendToolResult — MCP tool başarı yanıtı (text/markdown)
 func (s *Server) sendToolResult(id interface{}, text string) {
 	s.sendResult(id, map[string]interface{}{
 		"content": []map[string]interface{}{
@@ -435,7 +428,6 @@ func (s *Server) sendToolResult(id interface{}, text string) {
 	})
 }
 
-// sendToolError — MCP tool hata yanıtı  
 func (s *Server) sendToolError(id interface{}, message string) {
 	s.sendResult(id, map[string]interface{}{
 		"isError": true,
@@ -450,6 +442,5 @@ func (s *Server) send(resp JSONRPCResponse) {
 	if err != nil {
 		return
 	}
-	// JSON-RPC over stdio: her yanıt ayrı satırda
 	fmt.Fprintf(s.out, "%s\n", data)
 }

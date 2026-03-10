@@ -1,50 +1,100 @@
-# Vibecoder Müşteri Demo Özellikleri
+# Vibecoder Client Demo Features
 
-Müşterilerinize veya dış ekiplere ürününüzü (mobil, web, desktop api) gösterirken en büyük stres yerel bir hatanın sunumu bozmasıdır. `tunr` bu kaygıyı ortadan kaldırmak için Phase 8 güncellemesinde 4 adet çok spesifik, akıllı proxy katmanı (middleware) yaratmıştır. Bu makalede bu özelliklerin arkasındaki teknik mantık ve kullanım yer almaktadır. 
+The biggest fear when demoing your product — mobile, web, or desktop API — to clients or external teams is a local error derailing the entire presentation. Tunr eliminates this anxiety. In the Phase 8 update, we built four purpose-built, intelligent proxy middleware layers that sit between your client and your localhost. This document covers the technical architecture and usage of each feature.
 
-### `--demo`: The Safe Read-Only Mod
-`tunr share --port 8080 --demo`
+---
 
-Geliştiriciler yerel bilgisayar dizinlerindeki projeyi müşteriye test ettirirken formların submit edilip sahte siparişlerin databasede kirlilik yaratmasını istemeyebilir.
+## `--demo`: Safe Read-Only Mode
 
-**Nasıl Çalışır?** 
-1. HTTP isteği `tunr` LocalProxy katmanına girer.
-2. Metod kontrol edilir. Eğer istek `POST`, `PUT`, `PATCH`, veya `DELETE` ise,
-3. Proxy bu isteğin localhost'taki (port 8080) backend uygulamanıza yönlendirilmesini **iptal eder.** (Request Drop)
-4. Proxy bunun yerine frontend'i tatmin edecek bir JSON cevabını `{"status": "demo_success", "message": "Demo mode: Request mocked"}` `200 Success` HTTP state kodu eşliğinde manuel olarak oluşturup anında geri döner.
-5. Siteniz çalışmaya ve etkileşime devam eder, ama veritabanınıza hiçbir veri yazılmaz.
+```bash
+tunr share --port 8080 --demo
+```
 
-### `--freeze`: Localhost Kalkanı (Snapshoting)
-`tunr share --port 8080 --freeze`
+When developers let a client interact with a project running on their local machine, the last thing they want is forms being submitted, fake orders polluting the database, or test data corrupting real state.
 
-Tam demoyu yaparken kodunuzu güncellediniz veya uygulamanız (Nodemon, Air vs) crash verdi ve restart atmak zorunda kaldı. Klasik tünellerde dış cliente hemen 502 Bad Gateway veya "Connection Refused" ekranı çıkar. Müşteri korkar.
+**How It Works**
 
-**Nasıl Çalışır?** 
-1. Proxy, tünel açık olduğu sürece arka planda localhostunuzdan dönen başarılı "2xx Success" (HTML, CSS, JSON) statik cevaplarını memory tabanlı bir Hash table'da tutar.
-2. İşler ters gittiğinde: Localhostunuz `500 Server Error` verirse veya proxy localhosta bağlanamazsa (`TCP dial error`), proxy müşteriye asla hata göstermez. 
-3. Doğrudan bu cache memory'e başvurup o endpoint'in son çalışan sorunsuz versiyonunu ekrana basar.
-4. Client kesintisiz demoyu incelerken, sizin backend'i fixleyip ayağa kaldırmanız için kritik dakikalar kazandırılmış olur.
+1. An HTTP request enters Tunr's LocalProxy layer.
+2. The request method is inspected. If it is `POST`, `PUT`, `PATCH`, or `DELETE`:
+3. The proxy **drops the request** — it is never forwarded to the backend application on localhost (port 8080). This is a hard request drop at the proxy level.
+4. Instead, the proxy crafts a frontend-friendly mock JSON response — `{"status": "demo_success", "message": "Demo mode: Request mocked"}` — and returns it immediately with a `200 OK` HTTP status code.
+5. Your site continues to feel fully interactive. The client can click buttons, submit forms, and navigate freely — but absolutely nothing is written to your database.
 
-### `--inject-widget`: Transparan UI ve Log Yakalayıcı
-`tunr share --port 8080 --inject-widget`
+The result: your client gets a realistic, hands-on experience, and your data stays pristine.
 
-Müşteri ürünü test ederken WhatsApp üzerinden ekran görüntüsü alıp hatayı tarif etmesi geliştirici için işkencedir.
+---
 
-**Nasıl Çalışır?** 
-1. Sunucunuz HTML dokümanı (`text/html`) döndürdüğü anda proxy bu yanıtı hafızada tutalar ("response intercepting").
-2. HTML'in GZip/Deflate sıkıştırması varsa anında byte-array olarak decode edilir.
-3. HTML'in içindeki tag'ler regex destekli analizle taranıp kapatanan `</body>` tagı bulunur.
-4. Buraya `tunr`nun CDN tarafında barındırdığı iki parçalı bir remote javascript bloğu gömülür ve orjinal HTML dosyası tekrar aynı boyutta sıkıştırılıp (GZip) müşteriye gönderilir. 
-5. Müşteri şeffaf feedback butonuna tıklayıp ekranın neresinde sorun olduğunu yazar (Pinning). 
-6. Ayrıca script, istemcinin tarayıcısında konsola basılan tüm `window.onerror` loglarını sessizce toplar.
-7. Bilgiler Tunr'nun kendi `/__tunr/feedback` route'una (proxy tarafından intercept edilen localhost'a görünmeyen fake route'lar) POST atılır ve sizin terminal monitörünüze saniyesinde sarı ve mavi loglar ile düşer.
+## `--freeze`: Localhost Shield (Snapshot Cache)
 
-### `--auto-login`: Otomatik Ziyaretçi Kimliği
-`tunr share --port 8080 --auto-login "Cookie: user_session_token=abcdef5551"` 
+```bash
+tunr share --port 8080 --freeze
+```
 
-B2B veya SaaS sistemleri sunulurken ilk barikat Auth / Login sayfasıdır. Müşteri şifre unuttumla uğraşmamalı ve direkt ana panele düşmelidir.
+You are mid-demo. You push a code change, or your app (Nodemon, Air, etc.) crashes and starts a restart cycle. With conventional tunnels, the remote client immediately sees a `502 Bad Gateway` or "Connection Refused" screen. Panic ensues.
 
-**Nasıl Çalışır?**
-1. Tarayıcıdan bir query parametresi yakalanır veya tunr tünel aktif edilirken bu argüman doğrudan tünel state'ine yazılır.
-2. Chrome / Safari vs üzerinden gelen saf müşterinin HTTP request header'larına, `tunr` LocalProxy katmanında proxy manipülasyonu yapılarak istenen kimlik kartı (`Cookie` veya `Authorization` beareri) eklenir ve localhost'a öyle forwardlanır.
-3. Local sunucunuz isteği direkt Auth bariyerini geçmiş bir Admin gibi yorumlayıp kapıları açar. Müşterinin signup olma süreci bypass edilir.
+**How It Works**
+
+1. While the tunnel is active, the proxy silently caches every successful `2xx` response (HTML, CSS, JSON, images) from your localhost in a memory-backed hash table.
+2. When things go wrong — your localhost returns a `500 Internal Server Error`, or the proxy cannot establish a TCP connection at all (`dial error`) — the proxy **never** exposes the failure to the client.
+3. It falls back to the cache and serves the last known healthy version of each requested endpoint.
+4. The client continues browsing the demo seamlessly, completely unaware of the interruption, while you get precious minutes to fix and restart your backend.
+
+The `X-Tunr-Freeze-Cache` response header is added to cached responses so you can tell, at a glance, when a response is being served from the snapshot layer.
+
+---
+
+## `--inject-widget`: Transparent Feedback UI & Remote Log Capture
+
+```bash
+tunr share --port 8080 --inject-widget
+```
+
+The traditional feedback loop — the client takes a screenshot, sends it over WhatsApp, and tries to describe the problem in words — is a developer's nightmare.
+
+**How It Works**
+
+1. Every time your server returns an HTML document (`text/html`), the proxy intercepts the response in memory ("response intercepting").
+2. If the HTML body is GZip or Deflate compressed, it is decoded to a raw byte array on the fly.
+3. The HTML content is scanned with a regex-backed parser to locate the closing `</body>` tag.
+4. A two-part remote JavaScript bundle, hosted on Tunr's CDN, is injected just before the closing tag. The modified HTML is then re-compressed (GZip) to match the original encoding and sent to the client.
+5. The client sees a subtle, floating feedback button. Clicking it opens an overlay where they can drop pins on the screen to mark exactly where the issue is and describe it in text (visual pinning).
+6. In the background, the injected script silently captures all `window.onerror` events and unhandled promise rejections from the client's browser console.
+7. All feedback and error data is `POST`-ed to Tunr's internal `/__tunr/feedback` route — a virtual endpoint intercepted by the proxy that is invisible to your localhost application. The data appears instantly in your CLI monitor as color-coded log entries (yellow for feedback, blue for captured errors).
+
+This gives you pixel-precise bug reports and real-time JavaScript error telemetry without asking the client to install anything.
+
+---
+
+## `--auto-login`: Automatic Visitor Identity
+
+```bash
+tunr share --port 8080 --auto-login "Cookie: user_session_token=abcdef5551"
+```
+
+When demoing B2B or SaaS applications, the first obstacle is always the auth/login wall. Your client should not have to deal with "Forgot Password" flows — they should land directly on the main dashboard.
+
+**How It Works**
+
+1. The identity credential is provided as a CLI argument when the tunnel is created and stored in the tunnel's runtime state. Alternatively, a query parameter can be captured from the browser.
+2. When a raw, unauthenticated HTTP request arrives from the client's browser (Chrome, Safari, etc.), Tunr's LocalProxy layer performs header manipulation: the specified identity token — whether a `Cookie` or `Authorization: Bearer` header — is injected into the request before it is forwarded to localhost.
+3. Your local server sees the request as if it came from an already-authenticated admin user and grants full access. The client's signup and login process is completely bypassed.
+
+No more sharing temporary passwords or walking clients through a registration flow during a demo.
+
+---
+
+## Combining Everything
+
+These flags are designed to be composable. For the ultimate client demo experience, combine them all:
+
+```bash
+tunr share -p 3000 --demo --freeze --inject-widget --auto-login "Cookie: session=xyz"
+```
+
+This single command gives your client:
+- **Full interactivity** without any risk to your data (`--demo`)
+- **Zero-downtime resilience** even if your server crashes (`--freeze`)
+- **Built-in bug reporting** with visual pinning and remote error capture (`--inject-widget`)
+- **Instant access** with no login required (`--auto-login`)
+
+Ship with confidence. Demo without fear.

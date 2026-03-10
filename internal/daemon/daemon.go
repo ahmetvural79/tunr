@@ -12,18 +12,15 @@ import (
 	"time"
 )
 
-// DaemonState - daemon'ın şu anki durumu
-// (PID file'a yazılan JSON — disk üzerindeki hafıza)
+// DaemonState is the daemon's in-memory snapshot persisted as JSON to the PID file
 type DaemonState struct {
-	PID       int       `json:"pid"`
-	StartedAt time.Time `json:"started_at"`
-	Version   string    `json:"version"`
-
-	// Aktif tunnel bilgileri
-	Tunnels []TunnelInfo `json:"tunnels"`
+	PID       int          `json:"pid"`
+	StartedAt time.Time    `json:"started_at"`
+	Version   string       `json:"version"`
+	Tunnels   []TunnelInfo `json:"tunnels"`
 }
 
-// TunnelInfo - tek bir aktif tunnel'ın özeti
+// TunnelInfo is the summary of a single active tunnel
 type TunnelInfo struct {
 	ID        string    `json:"id"`
 	LocalPort int       `json:"local_port"`
@@ -31,8 +28,7 @@ type TunnelInfo struct {
 	StartedAt time.Time `json:"started_at"`
 }
 
-// pidFilePath - PID dosyasının nereye yazılacağı
-// Her platformda mantıklı bir yere koyuyoruz
+// pidFilePath returns the platform-appropriate location for our PID file
 func pidFilePath() (string, error) {
 	var dir string
 
@@ -44,7 +40,7 @@ func pidFilePath() (string, error) {
 		}
 		dir = filepath.Join(home, "Library", "Application Support", "tunr")
 	case "linux":
-		// XDG_RUNTIME_DIR ideal, yoksa /tmp'ye düş
+		// XDG_RUNTIME_DIR is ideal; fall back to /tmp
 		if xdg := os.Getenv("XDG_RUNTIME_DIR"); xdg != "" {
 			dir = filepath.Join(xdg, "tunr")
 		} else {
@@ -63,17 +59,16 @@ func pidFilePath() (string, error) {
 	return filepath.Join(dir, "daemon.pid"), nil
 }
 
-// WritePID - daemon başladığında PID'i kaydet
-// GÜVENLİK: PID file 0600 permission — sadece sahibi okur
+// WritePID saves the daemon's PID on startup.
+// SECURITY: PID file uses 0600 permissions — owner-only access.
 func WritePID(version string) error {
 	path, err := pidFilePath()
 	if err != nil {
-		return fmt.Errorf("PID dosya yolu belirlenemedi: %w", err)
+		return fmt.Errorf("could not determine PID file path: %w", err)
 	}
 
-	// Klasörü oluştur
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return fmt.Errorf("daemon dizini oluşturulamadı: %w", err)
+		return fmt.Errorf("could not create daemon directory: %w", err)
 	}
 
 	state := DaemonState{
@@ -85,18 +80,18 @@ func WritePID(version string) error {
 
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
-		return fmt.Errorf("PID state serialize edilemedi: %w", err)
+		return fmt.Errorf("could not serialize PID state: %w", err)
 	}
 
-	// GÜVENLİK: 0600 = sadece sahip okur, grup/diğer erişemez
+	// SECURITY: 0600 = owner-only, no group/other access
 	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("PID dosyası yazılamadı: %w", err)
+		return fmt.Errorf("could not write PID file: %w", err)
 	}
 
 	return nil
 }
 
-// ReadPID - çalışan daemon'ın PID'ini oku
+// ReadPID reads the running daemon's state from the PID file
 func ReadPID() (*DaemonState, error) {
 	path, err := pidFilePath()
 	if err != nil {
@@ -106,24 +101,23 @@ func ReadPID() (*DaemonState, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil // daemon çalışmıyor, bu normal
+			return nil, nil // no daemon running — that's fine
 		}
-		return nil, fmt.Errorf("PID dosyası okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read PID file: %w", err)
 	}
 
 	var state DaemonState
 	if err := json.Unmarshal(data, &state); err != nil {
-		// Bozuk PID file - temizle ve devam et
+		// Corrupt PID file — nuke it and move on
 		_ = os.Remove(path)
-		return nil, fmt.Errorf("bozuk PID dosyası temizlendi, yeniden başlatın")
+		return nil, fmt.Errorf("corrupt PID file removed; please restart the daemon")
 	}
 
 	return &state, nil
 }
 
-// IsRunning - daemon hâlâ çalışıyor mu?
-// PID var olsa bile process'in gerçekten çalışıp çalışmadığını kontrol eder.
-// (Sistem yeniden başladıysa PID artık geçerli olmayabilir)
+// IsRunning checks if the daemon is actually alive, not just that a PID file exists.
+// Stale PIDs from a reboot are a classic gotcha.
 func IsRunning() bool {
 	state, err := ReadPID()
 	if err != nil || state == nil {
@@ -133,7 +127,7 @@ func IsRunning() bool {
 	return processExists(state.PID)
 }
 
-// processExists - verilen PID'e sahip process var mı?
+// processExists probes whether a process with the given PID is alive
 func processExists(pid int) bool {
 	if pid <= 0 {
 		return false
@@ -143,7 +137,7 @@ func processExists(pid int) bool {
 	case "windows":
 		return processExistsWindows(pid)
 	default:
-		// Unix-like: kill(pid, 0) — process'e sinyal göndermez, sadece varlığı kontrol eder
+		// Unix trick: signal 0 doesn't actually kill anything — just checks existence
 		process, err := os.FindProcess(pid)
 		if err != nil {
 			return false
@@ -154,8 +148,7 @@ func processExists(pid int) bool {
 }
 
 func processExistsWindows(pid int) bool {
-	// Windows'ta /proc yok, farklı yöntem lazım
-	// TaskList ile kontrol
+	// No /proc on Windows — tasklist to the rescue
 	out, err := runCommand("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/NH", "/FO", "CSV")
 	if err != nil {
 		return false
@@ -163,35 +156,33 @@ func processExistsWindows(pid int) bool {
 	return strings.Contains(out, strconv.Itoa(pid))
 }
 
-// Stop - çalışan daemon'ı durdur
+// Stop gracefully shuts down the running daemon
 func Stop() error {
 	state, err := ReadPID()
 	if err != nil {
 		return err
 	}
 	if state == nil {
-		return fmt.Errorf("çalışan daemon bulunamadı")
+		return fmt.Errorf("no running daemon found")
 	}
 
 	process, err := os.FindProcess(state.PID)
 	if err != nil {
-		return fmt.Errorf("process bulunamadı (PID %d): %w", state.PID, err)
+		return fmt.Errorf("could not find process (PID %d): %w", state.PID, err)
 	}
 
-	// SIGTERM gönder - zarif kapatma için
-	// SIGKILL değil! Daemon temizlik yapabilsin.
+	// SIGTERM first — let the daemon clean up after itself. SIGKILL is the last resort.
 	if err := process.Signal(syscall.SIGTERM); err != nil {
-		// SIGTERM çalışmadıysa SIGKILL dene (son çare)
 		if killErr := process.Kill(); killErr != nil {
-			return fmt.Errorf("daemon durdurulamadı: %w", err)
+			return fmt.Errorf("could not stop daemon: %w", err)
 		}
 	}
 
-	// PID dosyasını temizle
+	// Clean up the PID file
 	return CleanPID()
 }
 
-// CleanPID - PID dosyasını sil (daemon kapanınca çağrılır)
+// CleanPID removes the PID file on daemon shutdown
 func CleanPID() error {
 	path, err := pidFilePath()
 	if err != nil {
@@ -199,27 +190,27 @@ func CleanPID() error {
 	}
 	err = os.Remove(path)
 	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("PID dosyası silinemedi: %w", err)
+		return fmt.Errorf("could not remove PID file: %w", err)
 	}
 	return nil
 }
 
-// AddTunnel - aktif tunnel listesine ekle (dashboard için)
+// AddTunnel registers a new active tunnel in the daemon state
 func AddTunnel(info TunnelInfo) error {
 	state, err := ReadPID()
 	if err != nil || state == nil {
-		return fmt.Errorf("daemon state okunamadı")
+		return fmt.Errorf("could not read daemon state")
 	}
 
 	state.Tunnels = append(state.Tunnels, info)
 	return writePIDState(state)
 }
 
-// RemoveTunnel - tunnel listesinden çıkar
+// RemoveTunnel removes a tunnel from the daemon's active list
 func RemoveTunnel(tunnelID string) error {
 	state, err := ReadPID()
 	if err != nil || state == nil {
-		return nil // daemon zaten çalışmıyor, sorun değil
+		return nil // daemon isn't running — nothing to update
 	}
 
 	filtered := make([]TunnelInfo, 0, len(state.Tunnels))
@@ -242,14 +233,12 @@ func writePIDState(state *DaemonState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0600) // güvenli permission yine
+	return os.WriteFile(path, data, 0600)
 }
 
-// runCommand - external komut çalıştır (sadece Windows için)
+// runCommand executes an external command (Windows only).
+// SECURITY: Only pass hardcoded arguments — never user input (command injection risk).
 func runCommand(name string, args ...string) (string, error) {
-	// Not: Bu fonksiyona kullanıcı input'u geçirilmemeli
-	// (command injection riski var)
-	// Şu an sadece sabit parametreler geçiyoruz, güvenli.
 	out, err := os.ReadFile("/dev/null") // placeholder
 	_ = out
 	_ = err

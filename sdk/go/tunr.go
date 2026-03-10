@@ -1,9 +1,9 @@
-// Package tunr — tunr Go SDK
+// Package tunr is the official Go SDK for tunr.
 //
-// tunr CLI'ı programatik olarak kullanın.
-// CI/CD, test automation, custom tooling için ideal.
+// Use it to programmatically create tunnels from CI/CD pipelines,
+// test automation, or custom tooling.
 //
-// Kullanım:
+// Usage:
 //
 //	client, err := tunr.NewClient()
 //	tunnel, err := client.Share(ctx, 3000, tunr.Options{})
@@ -21,28 +21,27 @@ import (
 	"time"
 )
 
-// Client — tunr API client
-// Hem REST API hem CLI üzerinden çalışabilir.
+// Client talks to the tunr API. Works via both REST and CLI under the hood.
 type Client struct {
 	token      string
 	apiBase    string
 	httpClient *http.Client
 }
 
-// Option — client konfigürasyon fonksiyonu
+// Option configures the client
 type Option func(*Client)
 
-// WithToken — auth token
+// WithToken sets the auth token
 func WithToken(token string) Option {
 	return func(c *Client) { c.token = token }
 }
 
-// WithAPIBase — özel relay adresi (self-hosted için)
+// WithAPIBase sets a custom relay address (for self-hosted deployments)
 func WithAPIBase(base string) Option {
 	return func(c *Client) { c.apiBase = base }
 }
 
-// NewClient — tunr client oluştur
+// NewClient creates a tunr client
 func NewClient(opts ...Option) (*Client, error) {
 	c := &Client{
 		apiBase: "https://relay.tunr.sh",
@@ -56,7 +55,7 @@ func NewClient(opts ...Option) (*Client, error) {
 	return c, nil
 }
 
-// Tunnel — aktif bir tunnel
+// Tunnel represents an active tunnel
 type Tunnel struct {
 	ID        string
 	PublicURL string
@@ -67,23 +66,22 @@ type Tunnel struct {
 	cmd  *exec.Cmd
 }
 
-// TunnelOptions — tunnel açma seçenekleri
+// TunnelOptions configures tunnel creation
 type TunnelOptions struct {
 	Subdomain string
 	NoInspect bool
 }
 
-// Share — local port'u public URL olarak paylaş
+// Share exposes a local port as a public HTTPS URL.
 //
 //	tunnel, err := client.Share(ctx, 3000, TunnelOptions{})
 //	// tunnel.PublicURL = "https://abc123.tunr.sh"
 //	defer tunnel.Close()
 func (c *Client) Share(ctx context.Context, port int, opts TunnelOptions) (*Tunnel, error) {
 	if port < 1024 || port > 65535 {
-		return nil, fmt.Errorf("geçersiz port: %d", port)
+		return nil, fmt.Errorf("invalid port: %d", port)
 	}
 
-	// tunr binary'yi çalıştır
 	args := []string{"share", "--port", fmt.Sprintf("%d", port), "--no-open"}
 	if opts.Subdomain != "" {
 		args = append(args, "--subdomain", opts.Subdomain)
@@ -91,7 +89,6 @@ func (c *Client) Share(ctx context.Context, port int, opts TunnelOptions) (*Tunn
 
 	cmd := exec.CommandContext(ctx, "tunr", args...)
 
-	// URL'yi stdout/stderr'den oku
 	urlCh := make(chan string, 1)
 	errCh := make(chan error, 1)
 
@@ -99,10 +96,9 @@ func (c *Client) Share(ctx context.Context, port int, opts TunnelOptions) (*Tunn
 	stderr, _ := cmd.StderrPipe()
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("tunr başlatılamadı: %w", err)
+		return nil, fmt.Errorf("failed to start tunr: %w", err)
 	}
 
-	// URL'yi oku
 	readOutput := func(r io.Reader) {
 		buf := make([]byte, 1024)
 		full := ""
@@ -110,7 +106,6 @@ func (c *Client) Share(ctx context.Context, port int, opts TunnelOptions) (*Tunn
 			n, err := r.Read(buf)
 			if n > 0 {
 				full += string(buf[:n])
-				// URL bulmaya çalış
 				for _, line := range splitLines(full) {
 					if url := extractURL(line); url != "" {
 						select {
@@ -130,7 +125,6 @@ func (c *Client) Share(ctx context.Context, port int, opts TunnelOptions) (*Tunn
 	go readOutput(stdout)
 	go readOutput(stderr)
 
-	// URL gelene kadar bekle (max 15s)
 	var publicURL string
 	select {
 	case publicURL = <-urlCh:
@@ -138,7 +132,7 @@ func (c *Client) Share(ctx context.Context, port int, opts TunnelOptions) (*Tunn
 		return nil, err
 	case <-time.After(15 * time.Second):
 		cmd.Process.Kill()
-		return nil, fmt.Errorf("tunnel 15 saniyede başlamadı")
+		return nil, fmt.Errorf("tunnel failed to start within 15 seconds")
 	case <-ctx.Done():
 		cmd.Process.Kill()
 		return nil, ctx.Err()
@@ -152,7 +146,6 @@ func (c *Client) Share(ctx context.Context, port int, opts TunnelOptions) (*Tunn
 		cmd:       cmd,
 	}
 
-	// Tunnel kapanınca done kanal'ı kapat
 	go func() {
 		cmd.Wait()
 		close(tunnel.done)
@@ -161,7 +154,7 @@ func (c *Client) Share(ctx context.Context, port int, opts TunnelOptions) (*Tunn
 	return tunnel, nil
 }
 
-// Close — tunnel'ı kapat
+// Close shuts down the tunnel
 func (t *Tunnel) Close() error {
 	if t.cmd != nil && t.cmd.Process != nil {
 		return t.cmd.Process.Kill()
@@ -169,14 +162,14 @@ func (t *Tunnel) Close() error {
 	return nil
 }
 
-// Done — tunnel kapandığında bu kanal kapanır
+// Done returns a channel that closes when the tunnel exits
 func (t *Tunnel) Done() <-chan struct{} {
 	return t.done
 }
 
 // ─── Inspector API ────────────────────────────────────────────────────────────
 
-// Request — yakalanmış HTTP isteği
+// Request is a captured HTTP request from the inspector
 type Request struct {
 	ID         string            `json:"id"`
 	Method     string            `json:"method"`
@@ -189,7 +182,7 @@ type Request struct {
 	ReqHeaders map[string]string `json:"req_headers"`
 }
 
-// Requests — son HTTP isteklerini getir
+// Requests fetches recent HTTP requests from the inspector
 func (c *Client) Requests(ctx context.Context, limit int) ([]*Request, error) {
 	dashURL := "http://localhost:19842/api/v1/requests"
 	if limit > 0 {
@@ -199,7 +192,7 @@ func (c *Client) Requests(ctx context.Context, limit int) ([]*Request, error) {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, dashURL, nil)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("inspector'a bağlanılamadı (daemon çalışıyor mu?): %w", err)
+		return nil, fmt.Errorf("could not reach inspector (is the daemon running?): %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -212,7 +205,7 @@ func (c *Client) Requests(ctx context.Context, limit int) ([]*Request, error) {
 	return result.Requests, nil
 }
 
-// Replay — yakalanmış bir isteği tekrar gönder
+// Replay resends a captured request to the local server
 func (c *Client) Replay(ctx context.Context, requestID string, port int) error {
 	url := fmt.Sprintf("http://localhost:19842/api/v1/requests/%s?action=replay&port=%d",
 		requestID, port)
@@ -223,7 +216,7 @@ func (c *Client) Replay(ctx context.Context, requestID string, port int) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("replay başarısız (status %d)", resp.StatusCode)
+		return fmt.Errorf("replay failed (status %d)", resp.StatusCode)
 	}
 	return nil
 }

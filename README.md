@@ -2,21 +2,20 @@
 
 <br/>
 
-```
-████████╗██╗   ██╗███╗   ██╗██████╗
-╚══██╔══╝██║   ██║████╗  ██║██╔══██╗
-   ██║   ██║   ██║██╔██╗ ██║██████╔╝
-   ██║   ██║   ██║██║╚██╗██║██╔══██╗
-   ██║   ╚██████╔╝██║ ╚████║██║  ██║
-   ╚═╝    ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═╝
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-wordmark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="assets/logo-wordmark.svg" />
+  <img src="assets/logo-wordmark.svg" alt="tunr" width="340" />
+</picture>
+
+<br/><br/>
 
 **Local → Public in < 3 seconds.**
 
 [![CI](https://github.com/tunr-dev/tunr/workflows/CI/badge.svg)](https://github.com/tunr-dev/tunr/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/tunr-dev/tunr)](https://goreportcard.com/report/github.com/tunr-dev/tunr)
 [![Release](https://img.shields.io/github/v/release/tunr-dev/tunr?color=7c3aed)](https://github.com/tunr-dev/tunr/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: PolyForm Shield](https://img.shields.io/badge/License-PolyForm%20Shield%201.0.0-7c3aed.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00add8)](go.mod)
 
 [tunr.sh](https://tunr.sh) · [Docs](https://tunr.sh/docs) · [Dashboard](https://app.tunr.sh)
@@ -51,7 +50,10 @@ It's a developer-first alternative to ngrok and Cloudflare Tunnel, built in Go a
 | **Feedback Widget Injection** | ✅ | ❌ | ❌ |
 | **Path Routing** | ✅ | ❌ | ⚠️ |
 | **Password Protection** | ✅ | ✅ | ✅ (Zero Trust) |
+| **Auto-Login Bypass** | ✅ | ❌ | ❌ |
 | **Auto-Expiring Tunnels (TTL)** | ✅ | ❌ | ❌ |
+| **Request Replay** | ✅ | ❌ | ❌ |
+| **Custom Domains** | ✅ | ✅ | ✅ |
 | **MCP Integration** | ✅ | ❌ | ❌ |
 | HTTP Request Inspector | ✅ | ✅ | ❌ |
 | Open Source CLI | ✅ | ❌ | ✅ |
@@ -78,6 +80,8 @@ go build -o tunr ./cmd/tunr
 ```
 
 Requires **Go 1.22+** to build from source.
+
+> **Free forever.** The CLI and all core features are open source. Cloud features (custom subdomains, team dashboards) require a [tunr.sh](https://tunr.sh) account.
 
 ---
 
@@ -109,6 +113,16 @@ tunr share --route /=3000 --route /api=8080
 # Password protection & expiration
 tunr share -p 8080 --password "secret" --ttl 30m
 
+# Vibecoder demo superpowers
+tunr share -p 3000 --demo --freeze --inject-widget
+tunr share -p 3000 --auto-login "Cookie: session=demo"
+
+# Custom domain
+tunr share -p 3000 --domain demo.client.com
+
+# Machine-readable output for CI/CD
+tunr share -p 3000 --json
+
 # Daemon mode (runs in background)
 tunr start --port 3000
 tunr stop
@@ -117,11 +131,14 @@ tunr status
 # Inspect & debug
 tunr open           # Open HTTP inspector dashboard
 tunr logs           # Stream request logs
+tunr logs --follow  # Real-time log stream
 tunr replay <id>    # Re-send a captured request
 
 # System
 tunr doctor         # System health check
 tunr version
+tunr update         # Self-update to latest release
+tunr uninstall      # Remove tunr from your system
 
 # Auth
 tunr login
@@ -148,6 +165,8 @@ tunr mcp            # Start MCP server (Claude, Cursor, Windsurf)
 | `tunr share -p PORT --freeze` | Freeze mode (cache-on-crash) |
 | `tunr share -p PORT --inject-widget` | Inject feedback widget into HTML |
 | `tunr share -p PORT --auto-login "Cookie: s=demo"` | Auto-inject auth cookie |
+| `tunr share -p PORT --domain HOST` | Use custom domain |
+| `tunr share -p PORT --json` | JSON output (CI/CD, scripting) |
 | `tunr start -p PORT` | Background daemon mode |
 | `tunr stop` | Stop daemon |
 | `tunr status` | Show active tunnels |
@@ -155,7 +174,9 @@ tunr mcp            # Start MCP server (Claude, Cursor, Windsurf)
 | `tunr open` | Open inspector dashboard |
 | `tunr replay <id>` | Replay captured request |
 | `tunr doctor` | Diagnose issues |
-| `tunr login` | Authenticate |
+| `tunr login` | Authenticate (browser-based OAuth) |
+| `tunr update` | Self-update CLI binary |
+| `tunr uninstall` | Remove tunr from system |
 | `tunr mcp` | Start MCP server |
 | `tunr config init` | Create `.tunr.json` |
 
@@ -325,13 +346,13 @@ tunr takes security seriously for an open-source CLI tool:
 - No telemetry, no analytics, no phone-home by default
 - Supply chain integrity via `go mod verify` and govulncheck in CI
 
-Found a vulnerability? **Do not open a public issue.** See [SECURITY.md](SECURITY.md).
+Found a vulnerability? **Do not open a public issue.** See [SECURITY.md](docs/SECURITY.md).
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+Contributions are welcome! Please read [CONTRIBUTING.md](docs/CONTRIBUTING.md) first.
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feat/my-feature`)
@@ -343,7 +364,9 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+PolyForm Shield 1.0.0 — see [LICENSE](LICENSE).
+
+You are free to use, modify, and distribute this software. The only restriction is that you may not use it to build a competing product or service. See the license for full terms.
 
 ---
 

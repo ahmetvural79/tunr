@@ -12,26 +12,26 @@ import (
 	"github.com/tunr-dev/tunr/internal/logger"
 )
 
-// RetryConfig - yeniden deneme stratejisi ayarları
-// Exponential backoff çünkü "hemen tekrar dene" flood yapar
+// RetryConfig tunes the exponential backoff strategy.
+// "Just retry immediately" is how you DDoS yourself.
 type RetryConfig struct {
-	MaxAttempts int           // kaç defa deneriz? (0 = sonsuza kadar, dikkatli kullan)
-	BaseDelay   time.Duration // ilk deneme gecikmesi
-	MaxDelay    time.Duration // maksimum gecikme (geometrik artışın tavanı)
-	Multiplier  float64       // her denemede gecikme katı
-	Jitter      bool          // gecikmeye rastlantısallık ekle (thundering herd önler)
+	MaxAttempts int           // 0 = forever, handle with care
+	BaseDelay   time.Duration // delay before the first retry
+	MaxDelay    time.Duration // ceiling for the geometric growth
+	Multiplier  float64       // delay multiplier per attempt
+	Jitter      bool          // randomize delay to prevent thundering herd
 }
 
-// DefaultRetryConfig - "aklı başında" varsayılan retry ayarları
+// DefaultRetryConfig is the "sane defaults" config — retries forever in daemon mode
 var DefaultRetryConfig = RetryConfig{
-	MaxAttempts: 0,          // sonsuza kadar dene (daemon mode)
+	MaxAttempts: 0,
 	BaseDelay:   1 * time.Second,
 	MaxDelay:    60 * time.Second,
 	Multiplier:  2.0,
-	Jitter:      true, // aynı anda binlerce client retry yapmasın diye
+	Jitter:      true,
 }
 
-// ShareRetryConfig - `tunr share` için daha az sabırlı config
+// ShareRetryConfig is less patient — `tunr share` shouldn't wait forever
 var ShareRetryConfig = RetryConfig{
 	MaxAttempts: 5,
 	BaseDelay:   500 * time.Millisecond,
@@ -40,14 +40,14 @@ var ShareRetryConfig = RetryConfig{
 	Jitter:      true,
 }
 
-// RetryFunc - yeniden denenecek fonksiyon tipi
+// RetryFunc is the function signature for anything that can be retried
 type RetryFunc func(ctx context.Context, attempt int) error
 
-// IsRetryableError - bu hatayı yeniden denemeye değer mi?
-// Bazı hatalar retry'dan fayda görmez (örn: auth hatası, invalid port)
+// IsRetryableError decides if an error is worth retrying.
+// Some errors (auth failures, bad ports) won't magically fix themselves.
 type IsRetryableError func(err error) bool
 
-// WithRetry - exponential backoff ile fonksiyonu yeniden dene
+// WithRetry wraps a function in exponential backoff
 func WithRetry(ctx context.Context, cfg RetryConfig, fn RetryFunc, isRetryable ...IsRetryableError) error {
 	retryCheck := defaultIsRetryable
 	if len(isRetryable) > 0 && isRetryable[0] != nil {
@@ -57,47 +57,40 @@ func WithRetry(ctx context.Context, cfg RetryConfig, fn RetryFunc, isRetryable .
 	for attempt := 1; ; attempt++ {
 		err := fn(ctx, attempt)
 		if err == nil {
-			return nil // başarı!
+			return nil
 		}
 
-		// Retry'a değmez mi?
 		if !retryCheck(err) {
-			return fmt.Errorf("yeniden denenemeyen hata: %w", err)
+			return fmt.Errorf("non-retryable error: %w", err)
 		}
 
-		// Max deneme sayısına ulaştık mı?
 		if cfg.MaxAttempts > 0 && attempt >= cfg.MaxAttempts {
-			return fmt.Errorf("%d deneme sonrası vazgeçildi: %w", attempt, err)
+			return fmt.Errorf("gave up after %d attempts: %w", attempt, err)
 		}
 
-		// Ne kadar bekleyeceğiz?
 		delay := calculateDelay(cfg, attempt)
 
-		logger.Warn("Deneme %d başarısız: %v — %s sonra yeniden denenecek", attempt, err, delay.Round(time.Millisecond))
+		logger.Warn("Attempt %d failed: %v — retrying in %s", attempt, err, delay.Round(time.Millisecond))
 
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(delay):
-			// devam et, yeniden dene
 		}
 	}
 }
 
-// calculateDelay - exponential backoff + optional jitter hesapla
+// calculateDelay computes exponential backoff with optional jitter
 func calculateDelay(cfg RetryConfig, attempt int) time.Duration {
-	// delay = base * multiplier^(attempt-1)
 	delay := float64(cfg.BaseDelay) * math.Pow(cfg.Multiplier, float64(attempt-1))
 
-	// Tavanı uygula
 	if delay > float64(cfg.MaxDelay) {
 		delay = float64(cfg.MaxDelay)
 	}
 
 	if cfg.Jitter {
-		// ±25% jitter ekle — thundering herd problem'ı önler
-		// GÜVENLİK: math/rand yeterli, burada kripto random gerekmez
-		// (jitter güvenlik değil, performans için)
+		// ±25% jitter to prevent thundering herd
+		// SECURITY: math/rand is fine here — this is about load spreading, not cryptography
 		jitter := delay * 0.25
 		delay += (rand.Float64()*2 - 1) * jitter
 		if delay < 0 {
@@ -108,70 +101,65 @@ func calculateDelay(cfg RetryConfig, attempt int) time.Duration {
 	return time.Duration(delay)
 }
 
-// defaultIsRetryable - retry mantığı: hangi hatalar yeniden denenebilir?
+// defaultIsRetryable decides which errors deserve another shot
 func defaultIsRetryable(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	// Context cancelled/timeout - kesinlikle retry etme
 	if err == context.Canceled || err == context.DeadlineExceeded {
 		return false
 	}
 
-	// Network hataları genellikle geçicidir - retry et
-	// URL hatası, auth hatası - retry etme
 	switch err.(type) {
 	case *url.Error:
 		ue := err.(*url.Error)
-		// Timeout ve temporary network errors → retry
 		if ue.Timeout() {
 			return true
 		}
-		// DNS failure, connection refused → retry (server başlamıyor olabilir)
+		// DNS failure, connection refused — server might still be booting
 		return true
 	}
 
-	return true // varsayılan: retry et
+	return true // when in doubt, retry
 }
 
-// RelayClient - tunr relay sunucusuyla iletişim kurar
-// Şimdilik Cloudflare quicktunnel wrapper, ileride custom relay
+// RelayClient talks to the tunr relay server.
+// Currently wraps Cloudflare quicktunnel; custom relay coming soon.
 type RelayClient struct {
-	relayURL  string
-	authToken string // sadece relay'e iletilir, log'a GEÇMEz
+	relayURL   string
+	authToken  string // SECURITY: only sent to relay, never logged
 	httpClient *http.Client
 }
 
-// NewRelayClient - relay client oluştur
+// NewRelayClient creates a relay client with sane defaults
 func NewRelayClient(relayURL string, authToken string) *RelayClient {
 	return &RelayClient{
 		relayURL:  relayURL,
-		authToken: authToken, // GÜVENLİK: bu alan struct dışına expose edilmez
+		authToken: authToken, // SECURITY: this field is not exposed outside the struct
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 			Transport: &http.Transport{
-				// GÜVENLİK: TLS verify her zaman aktif!
-				// InsecureSkipVerify: false // default zaten, ama açıkça belirtiyoruz
+				// SECURITY: TLS verification is always on — no exceptions
 				DisableKeepAlives: false,
 			},
 		},
 	}
 }
 
-// RequestTunnel - relay'den yeni tunnel URL'i talep et
+// RequestTunnel asks the relay for a fresh public URL
 func (rc *RelayClient) RequestTunnel(ctx context.Context, port int, opts TunnelRequestOptions) (*TunnelResponse, error) {
-	// GÜVENLİK: URL validation - SSRF saldırısını önle
+	// SECURITY: validate URL to prevent SSRF attacks
 	if err := validateRelayURL(rc.relayURL); err != nil {
-		return nil, fmt.Errorf("geçersiz relay URL: %w", err)
+		return nil, fmt.Errorf("invalid relay URL: %w", err)
 	}
 
-	// TODO Faz 1: Gerçek API çağrısı
+	// TODO phase 1: real API call
 	// POST /v1/tunnels
 	// Authorization: Bearer <token>
 	// { "local_port": port, "subdomain": opts.Subdomain }
 	//
-	// Şimdilik Cloudflare quicktunnel kullan (token gerekmez, ama rate limited)
+	// For now, fall back to Cloudflare quicktunnel (no token needed, but rate limited)
 	publicURL := fmt.Sprintf("https://%s.trycloudflare.com", generateSubdomain())
 
 	return &TunnelResponse{
@@ -181,44 +169,41 @@ func (rc *RelayClient) RequestTunnel(ctx context.Context, port int, opts TunnelR
 	}, nil
 }
 
-// TunnelRequestOptions - tunnel talep seçenekleri
+// TunnelRequestOptions configures a tunnel request
 type TunnelRequestOptions struct {
-	Subdomain string // özel subdomain (pro)
+	Subdomain string // custom subdomain (pro feature)
 	HTTPS     bool
 }
 
-// TunnelResponse - relay'den dönen tunnel bilgisi
+// TunnelResponse is what the relay hands back
 type TunnelResponse struct {
 	PublicURL string    `json:"public_url"`
 	TunnelID  string    `json:"tunnel_id"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// validateRelayURL - relay URL'inin güvenli olduğunu doğrula
-// GÜVENLİK: SSRF saldırısına karşı koruma
-// Biri config'i değiştirerek iç ağa istek yaptıramasın
+// validateRelayURL ensures the relay URL is safe to call.
+// SECURITY: prevents SSRF — nobody should be able to craft a config that hits internal networks
 func validateRelayURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return fmt.Errorf("URL parse hatası: %w", err)
+		return fmt.Errorf("failed to parse URL: %w", err)
 	}
 
-	// Sadece HTTPS relay'lere bağlan (HTTP kabul etme)
 	if u.Scheme != "https" {
-		return fmt.Errorf("relay HTTPS kullanmalı (scheme: %q)", u.Scheme)
+		return fmt.Errorf("relay must use HTTPS (got scheme: %q)", u.Scheme)
 	}
 
-	// Private IP aralıklarını reddet (SSRF koruması)
-	// 10.x.x.x, 172.16-31.x.x, 192.168.x.x, 127.x.x.x, 169.254.x.x
+	// SECURITY: reject private IP ranges to prevent SSRF
 	host := u.Hostname()
 	if isPrivateHost(host) {
-		return fmt.Errorf("relay private IP adresine işaret edemez: %s", host)
+		return fmt.Errorf("relay must not point to a private IP: %s", host)
 	}
 
 	return nil
 }
 
-// isPrivateHost - verilen host private/loopback mu?
+// isPrivateHost checks if the host resolves to a private or loopback address
 func isPrivateHost(host string) bool {
 	privateHosts := []string{
 		"localhost", "127.", "10.", "192.168.",
@@ -229,7 +214,6 @@ func isPrivateHost(host string) bool {
 			return true
 		}
 	}
-	// 172.16.x.x - 172.31.x.x
 	if len(host) >= 7 && host[:4] == "172." {
 		var second int
 		fmt.Sscanf(host[4:], "%d", &second)
@@ -240,15 +224,14 @@ func isPrivateHost(host string) bool {
 	return false
 }
 
-// generateSubdomain - random subdomain üret (quicktunnel için)
+// generateSubdomain creates a random hex subdomain for quicktunnel
 func generateSubdomain() string {
-	// 8 karakterlik random hex
 	b := make([]byte, 4)
-	rand.Read(b) // math/rand: subdomain için kripto güvenli random gerekmez
+	rand.Read(b)
 	return fmt.Sprintf("%x", b)
 }
 
-// generateID - tunnel ID üret
+// generateID mints a short random tunnel ID
 func generateID() string {
 	b := make([]byte, 8)
 	rand.Read(b)

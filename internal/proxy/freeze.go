@@ -10,7 +10,6 @@ import (
 	"github.com/tunr-dev/tunr/internal/logger"
 )
 
-// cacheEntry — Freeze mode için bir sayfanın önbelleklenmiş hali
 type cacheEntry struct {
 	Headers    http.Header
 	StatusCode int
@@ -18,15 +17,15 @@ type cacheEntry struct {
 	SavedAt    time.Time
 }
 
-// FreezeCache — Proxy çöktüğünde son çalışan versiyonu gösteren bellek içi önbellek.
-// Vibecoder demo sırasında sunucuyu çökertirse müşteri hissetmez.
+// FreezeCache is an in-memory snapshot of last-known-good responses.
+// When the local server crashes mid-demo, clients keep seeing a working app.
 type FreezeCache struct {
 	mu      sync.RWMutex
 	entries map[string]*cacheEntry
 	enabled bool
 }
 
-// NewFreezeCache — yeni bir freeze mode cache oluştur
+// NewFreezeCache creates a new freeze mode cache.
 func NewFreezeCache(enabled bool) *FreezeCache {
 	return &FreezeCache{
 		entries: make(map[string]*cacheEntry),
@@ -34,7 +33,7 @@ func NewFreezeCache(enabled bool) *FreezeCache {
 	}
 }
 
-// responseRecorder — Freeze cache için yanıtı yakalar
+// responseRecorder tees response bytes into a buffer for cache storage.
 type responseRecorder struct {
 	http.ResponseWriter
 	statusCode int
@@ -50,12 +49,12 @@ func (r *responseRecorder) Write(p []byte) (int, error) {
 	if r.statusCode == 0 {
 		r.statusCode = http.StatusOK
 	}
-	r.body.Write(p) // Cache için kopyala
-	return r.ResponseWriter.Write(p) // İstemciye gönder
+	r.body.Write(p)
+	return r.ResponseWriter.Write(p)
 }
 
-// Middleware — Freeze mod devredeyse yanıtları cache'ler,
-// sunucu hatası (5xx) veya ulaşılamama durumunda cache'den döner.
+// Middleware caches successful responses and serves them back
+// when the upstream goes belly-up (5xx or unreachable).
 func (c *FreezeCache) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !c.enabled {
@@ -63,7 +62,7 @@ func (c *FreezeCache) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Sadece GET ve HEAD isteklerini cache'le (state değiştirenler cache'lenmez)
+		// Only cache GET/HEAD — don't cache state-mutating requests
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			next.ServeHTTP(w, r)
 			return
@@ -71,21 +70,19 @@ func (c *FreezeCache) Middleware(next http.Handler) http.Handler {
 
 		cacheKey := r.URL.Path + "?" + r.URL.RawQuery
 
-		// Yanıtı yakalamak için recorder oluştur
+		// Wrap the writer to capture the response
 		rec := &responseRecorder{
 			ResponseWriter: w,
 			statusCode:     0,
 			body:           &bytes.Buffer{},
 		}
 
-		// Orijinal handler'ı çağır
+		// Let the real handler do its thing
 		next.ServeHTTP(rec, r)
 
-		// 2xx veya 3xx ise cache'e kaydet
 		if rec.statusCode >= 200 && rec.statusCode < 400 {
-			// Başarılı yanıt — cache'i güncelle
 			c.mu.Lock()
-			// Header'ları derin kopyala
+			// Deep-copy headers so we own the data
 			headersCopy := make(http.Header)
 			for k, vv := range w.Header() {
 				for _, v := range vv {
@@ -93,12 +90,12 @@ func (c *FreezeCache) Middleware(next http.Handler) http.Handler {
 				}
 			}
 			
-			// Body 5MB'dan büyükse cache'leme (RAM dolmasın)
+			// Skip caching bodies over 5MB — we're not Redis
 			if rec.body.Len() < 5*1024*1024 {
 				c.entries[cacheKey] = &cacheEntry{
 					Headers:    headersCopy,
 					StatusCode: rec.statusCode,
-					Body:       rec.body.Bytes(), // kopyala
+					Body:       rec.body.Bytes(),
 					SavedAt:    time.Now(),
 				}
 			}
@@ -106,17 +103,14 @@ func (c *FreezeCache) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Eğer 5xx hatası döndüyse veya sunucu yanıt vermediyse (proxy Bad Gateway attıysa) 
-		// RECORDER MÜDAHALE EDEMEZ ÇÜNKÜ ZATEN İSTEMCİYE YAZILMIŞ OLDU.
-		// Bu nedenle Caddy/ReverseProxy hata durumunu önceden anlayıp cache'den dönemiyoruz.
-		//
-		// GERÇEK FREEZE MODE İMPLEMENTASYONU:
-		// Reverse proxy hatasında çalışması için Caddy/ReverseProxy Custom Transport yazılır.
+		// On 5xx the response is already written to the client — the recorder
+		// can't un-send bytes. The real freeze magic happens in the ErrorHandler
+		// hook on the reverse proxy (see BuildMiddlewareChain).
 	})
 }
 
-// ServeFromCache — Reverse proxy hata verdiğinde (Örn: 502 Bad Gateway)
-// Doğrudan bu fonksiyon çağrılarak client'a sağlıklı cache dönüşü sağlanır!
+// ServeFromCache is the fallback when the reverse proxy returns an error (e.g. 502).
+// Called directly from the ErrorHandler to serve the last-known-good response.
 func (c *FreezeCache) ServeFromCache(w http.ResponseWriter, r *http.Request) bool {
 	if !c.enabled || (r.Method != http.MethodGet && r.Method != http.MethodHead) {
 		return false
@@ -129,18 +123,17 @@ func (c *FreezeCache) ServeFromCache(w http.ResponseWriter, r *http.Request) boo
 	c.mu.RUnlock()
 
 	if !exists {
-		return false // Cache'te yok
+		return false
 	}
 
-	// Müşteri "sunucu çöktü" paniği yaşamaz!
-	logger.Warn("FREEZE MODE: Localhost çöktü, %s isteği cache'den sunuluyor!", r.URL.Path)
+	logger.Warn("FREEZE MODE: Localhost is down, serving %s from cache!", r.URL.Path)
 
 	for k, vv := range entry.Headers {
 		for _, v := range vv {
 			w.Header().Add(k, v)
 		}
 	}
-	// Freeze mode cache isareti
+	// Tag the response so devtools can spot it
 	w.Header().Set("X-Tunr-Freeze-Cache", "HIT")
 	w.Header().Set("X-Cache-Saved-At", entry.SavedAt.Format(time.RFC3339))
 	

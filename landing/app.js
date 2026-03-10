@@ -1,26 +1,26 @@
 /**
  * tunr.sh — Landing Page App Logic
  * 
- * Burada çok süslü şeyler yok, sadece:
- * 1. Terminal typing animasyonu (en önemli kısım)
- * 2. Scroll efektleri (görsel şatafat)
- * 3. Waitlist form (asıl iş)
+ * Nothing too fancy here, just:
+ * 1. Terminal typing animation (the main attraction)
+ * 2. Scroll effects (visual flair)
+ * 3. Waitlist form (the real deal)
  * 
- * Vanilla JS kullandık çünkü React için landing page'e
- * 400kb gönderilmez, insani bir şey yapalım.
+ * We used vanilla JS because shipping 400kb of React
+ * for a landing page is not a reasonable thing to do.
  */
 
-/* ── Terminal Animasyonu ── */
+/* ── Terminal Animation ── */
 
 const TERMINAL_CMD = "tunr share --port 3000";
 
-// Output satırlarını birer birer göster
+// Show output lines one by one
 const OUTPUT_TIMINGS = [
   { id: 0, delay: 200 },   // "Connecting..."
   { id: 1, delay: 600 },   // "Setting up HTTPS..."
-  { id: 2, delay: 1000 },  // boş satır
-  { id: 3, delay: 1400 },  // URL satırı - para anı
-  { id: 4, delay: 1800 },  // boş satır
+  { id: 2, delay: 1000 },  // blank line
+  { id: 3, delay: 1400 },  // URL line - the money shot
+  { id: 4, delay: 1800 },  // blank line
   { id: 5, delay: 2000 },  // "Ctrl+C..."
 ];
 
@@ -29,20 +29,20 @@ function startTerminalAnimation() {
   const cursor = document.getElementById("t-cursor-1");
   const output = document.getElementById("t-output");
 
-  if (!cmdEl || !cursor || !output) return; // element yoksa uğraşma
+  if (!cmdEl || !cursor || !output) return; // bail if elements missing
 
   let charIndex = 0;
   const typeSpeed = 60; // ms per character
 
-  // Yazma animasyonu
+  // Typing animation
   const typeInterval = setInterval(() => {
     if (charIndex < TERMINAL_CMD.length) {
       cmdEl.textContent = TERMINAL_CMD.slice(0, charIndex + 1);
       charIndex++;
     } else {
-      // Komut yazıldı, output'u göster
+      // Command typed, show output
       clearInterval(typeInterval);
-      cursor.style.display = "none"; // cursor'ı gizle, gerçekmiş gibi
+      cursor.style.display = "none"; // hide cursor for realism
 
       setTimeout(() => {
         output.classList.remove("hidden");
@@ -60,7 +60,7 @@ function startTerminalAnimation() {
   }, typeSpeed);
 }
 
-// Sayfa yüklenince başlat, 1 saniye sonra (user'ın hazır olması için)
+// Start after page load, with a short delay so the user is ready
 window.addEventListener("DOMContentLoaded", () => {
   setTimeout(startTerminalAnimation, 800);
 });
@@ -73,7 +73,7 @@ let lastScrollY = 0;
 window.addEventListener("scroll", () => {
   const currentScrollY = window.scrollY;
 
-  // 50px scroll sonrası nav'ı blur yap
+  // Add blur to nav after 50px of scroll
   if (currentScrollY > 50) {
     nav.classList.add("scrolled");
   } else {
@@ -81,28 +81,28 @@ window.addEventListener("scroll", () => {
   }
 
   lastScrollY = currentScrollY;
-}, { passive: true }); // passive: true = scroll performansını artırır
+}, { passive: true }); // passive: true = improves scroll performance
 
-/* ── Scroll Reveal Animasyonu ── */
+/* ── Scroll Reveal Animation ── */
 
-// IntersectionObserver: element viewport'a girince animasyon tetikle
-// requestAnimationFrame veya setInterval'dan çok daha verimli
+// IntersectionObserver: trigger animation when element enters viewport
+// Much more efficient than requestAnimationFrame or setInterval
 const revealObserver = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
       if (entry.isIntersecting) {
         entry.target.classList.add("visible");
-        revealObserver.unobserve(entry.target); // bir kere göster, yeter
+        revealObserver.unobserve(entry.target); // reveal once, that's enough
       }
     });
   },
   {
-    threshold: 0.1,     // elementin %10'u görününce tetikle
+    threshold: 0.1,     // trigger when 10% of the element is visible
     rootMargin: "0px",
   }
 );
 
-// "reveal" class'ına sahip her elementi observe et
+// Observe every element with the "reveal" class
 document.querySelectorAll(".reveal").forEach((el) => {
   revealObserver.observe(el);
 });
@@ -117,11 +117,11 @@ const btnLoading = document.getElementById("btn-loading");
 const formMessage = document.getElementById("form-message");
 
 /**
- * Email validation - RFC 5321'e göre değil, pratik hayata göre.
- * Regex'e güven ama aşırı güvenme, backend'de de doğrula.
+ * Email validation — practical, not strictly RFC 5321.
+ * Trust the regex but don't over-rely on it; always validate on the backend too.
  * 
- * GÜVENLİK: Email sadece format validate ediliyor.
- * Backend'de gerçek doğrulama yapılmalı (injection vb.).
+ * SECURITY: Only format validation here.
+ * Real validation (injection etc.) must happen on the backend.
  */
 function isValidEmail(email) {
   if (!email || typeof email !== "string") return false;
@@ -131,9 +131,9 @@ function isValidEmail(email) {
 }
 
 /**
- * Honeypot kontrolü - bot mu, insan mı?
- * Bots genellikle tüm input'ları doldurur.
- * "website" alanı CSS ile gizlenmiş, gerçek kullanıcı görmez.
+ * Honeypot check — bot or human?
+ * Bots typically fill in every input field.
+ * The "website" field is hidden with CSS; real users never see it.
  */
 function isBot() {
   const honeypot = form.querySelector('input[name="website"]');
@@ -163,19 +163,19 @@ function setLoading(loading) {
 form && form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  // Gizli mesaj: bot yakalandı
+  // Secret: bot caught
   if (isBot()) {
-    // Bota başarılı mesajı göster ama hiçbir şey yapma
-    // (biraz acımasız ama bots hak ediyor)
-    showMessage("Kaydınız alındı! ✨", "success");
+    // Show a success message to the bot but do nothing
+    // (a bit ruthless, but bots deserve it)
+    showMessage("You're signed up! ✨", "success");
     return;
   }
 
   const email = emailInput.value.trim();
 
-  // Client-side validation - UX için
+  // Client-side validation — for UX
   if (!isValidEmail(email)) {
-    showMessage("Geçerli bir e-posta adresi girin.", "error");
+    showMessage("Please enter a valid email address.", "error");
     emailInput.focus();
     return;
   }
@@ -185,15 +185,15 @@ form && form.addEventListener("submit", async (e) => {
 
   try {
     /**
-     * GÜVENLİK: CSRF için header ekle.
-     * Backend henüz yok, fetch simüle ediyoruz.
-     * Gerçek implementasyonda:
-     * - CSRF token header ekle
-     * - Rate limiting backend'de kontrol edilmeli (IP başına X/dakika)
-     * - Email normalize et (küçük harf, trim)
+     * SECURITY: Add CSRF header.
+     * No backend yet, so we simulate the fetch.
+     * In the real implementation:
+     * - Add a CSRF token header
+     * - Rate limiting must be enforced on the backend (X requests/minute per IP)
+     * - Normalize the email (lowercase, trim)
      */
 
-    // TODO: Gerçek API endpoint'e bağla (Faz 0'da)
+    // TODO: Wire up to the real API endpoint (Phase 0)
     // const res = await fetch("https://api.tunr.sh/waitlist", {
     //   method: "POST",
     //   headers: {
@@ -203,25 +203,25 @@ form && form.addEventListener("submit", async (e) => {
     //   body: JSON.stringify({ email: email.toLowerCase() }),
     // });
 
-    // Şimdilik simülasyon - 1.5 saniye bekle, başarılı de
+    // Simulation for now — wait 1.5s and report success
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
     showMessage(
-      "🎉 Kaydınız alındı! Beta açıldığında ilk sizi haberdar edeceğiz.",
+      "🎉 You're signed up! We'll let you know first when the beta launches.",
       "success"
     );
 
     form.reset();
 
-    // Başarı sonrası formu gizle (opsiyonel, güzel görünür)
+    // Hide the form after success (optional, looks nice)
     setTimeout(() => {
       form.style.display = "none";
     }, 3000);
 
   } catch (err) {
-    // Gerçek bir network hatası oldu
+    // An actual network error occurred
     showMessage(
-      "Bir hata oluştu. Lütfen tekrar deneyin veya GitHub'da issue açın.",
+      "Something went wrong. Please try again or open a GitHub issue.",
       "error"
     );
     console.error("Waitlist submit error:", err);
@@ -246,31 +246,31 @@ document.querySelectorAll('a[href^="#"]').forEach((link) => {
   });
 });
 
-/* ── Klavye Erişilebilirliği ── */
+/* ── Keyboard Accessibility ── */
 
-// ESC ile form'u reset et (küçük ama güzel detay)
+// Reset form on ESC (small but nice detail)
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && document.activeElement === emailInput) {
     emailInput.blur();
   }
 });
 
-/* ── Feature card giriş animasyonları ── */
+/* ── Feature Card Entrance Animations ── */
 
-// Feature kartlarının sırayla girmesi için stagger effect
+// Stagger effect for feature cards entering sequentially
 document.querySelectorAll(".feature-card").forEach((card, i) => {
   card.style.transitionDelay = `${i * 80}ms`;
   revealObserver.observe(card);
 });
 
-// Step'ler de gözlemlensin
+// Observe steps as well
 document.querySelectorAll(".step").forEach((step, i) => {
   step.classList.add("reveal");
   step.style.transitionDelay = `${i * 150}ms`;
   revealObserver.observe(step);
 });
 
-// Stat kartları
+// Stat cards
 document.querySelectorAll(".stat-card").forEach((card, i) => {
   card.classList.add("reveal");
   card.style.transitionDelay = `${i * 100}ms`;
@@ -280,7 +280,7 @@ document.querySelectorAll(".stat-card").forEach((card, i) => {
 console.log(
   "%c tunr.sh ",
   "background: linear-gradient(135deg, #00d4ff, #7c3aed); color: white; font-weight: bold; padding: 4px 8px; border-radius: 4px;",
-  "\n\nMerhaba meraklı developer! 👋\nKoda bakmak istiyorsanız → https://github.com/tunr-dev/tunr\nKatkı yapmak ister misiniz? PRs welcome!"
+  "\n\nHey there, curious developer! 👋\nWant to peek at the code? → https://github.com/tunr-dev/tunr\nWant to contribute? PRs welcome!"
 );
 
 /* ── Theme Toggle (Light / Dark Mode) ── */
@@ -382,12 +382,12 @@ function closeFeedbackModal() {
 
 (function initCookieBanner() {
   const consent = localStorage.getItem('tunr-cookie-consent');
-  if (consent) return; // Zaten onaylandi
+  if (consent) return; // Already responded
 
   const banner = document.getElementById('cookie-banner');
   if (!banner) return;
 
-  // Sayfa yüklenince kısa bir süre sonra göster
+  // Show shortly after page load
   setTimeout(() => banner.classList.add('visible'), 1500);
 
   document.getElementById('cookie-accept') && document.getElementById('cookie-accept').addEventListener('click', () => {
@@ -398,7 +398,7 @@ function closeFeedbackModal() {
 
   document.getElementById('cookie-reject') && document.getElementById('cookie-reject').addEventListener('click', () => {
     localStorage.setItem('tunr-cookie-consent', 'rejected');
-    // İşlevsel olmayan çerezleri devre dışı bırak (şu an yok, ileride analytics için)
+    // Disable non-essential cookies (none right now, for future analytics)
     banner.classList.remove('visible');
     setTimeout(() => banner.remove(), 500);
   });

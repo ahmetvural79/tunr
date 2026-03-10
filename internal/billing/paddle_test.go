@@ -12,8 +12,8 @@ import (
 	"github.com/tunr-dev/tunr/internal/billing"
 )
 
-// createPaddleSig — test için geçerli Paddle webhook imzası oluştur
-// Paddle protokolü: "ts=<timestamp>:body" HMAC-SHA256
+// createPaddleSig — creates a valid Paddle webhook signature for testing
+// Paddle protocol: "ts=<timestamp>:body" HMAC-SHA256
 func createPaddleSig(secret, body string, ts int64) string {
 	payload := fmt.Sprintf("%d:%s", ts, body)
 	mac := hmac.New(sha256.New, []byte(secret))
@@ -22,15 +22,15 @@ func createPaddleSig(secret, body string, ts int64) string {
 	return fmt.Sprintf("ts=%d;h1=%s", ts, sig)
 }
 
-// TestNewPaddleClientCreation — client oluşturma
+// TestNewPaddleClientCreation — verifies client creation
 func TestNewPaddleClientCreation(t *testing.T) {
 	client := billing.NewPaddleClient("test-api-key", "test-webhook-secret", true)
 	if client == nil {
-		t.Fatal("NewPaddleClient nil döndürdü")
+		t.Fatal("NewPaddleClient returned nil")
 	}
 }
 
-// TestWebhookVerifyValidSignature — geçerli imzalı webhook kabul edilmeli
+// TestWebhookVerifyValidSignature — valid signature should be accepted
 func TestWebhookVerifyValidSignature(t *testing.T) {
 	secret := "test-webhook-secret-paddle"
 	client := billing.NewPaddleClient("api-key", secret, true)
@@ -41,11 +41,11 @@ func TestWebhookVerifyValidSignature(t *testing.T) {
 
 	err := client.VerifyWebhookSignature([]byte(body), sig)
 	if err != nil {
-		t.Fatalf("Geçerli webhook reddedildi: %v", err)
+		t.Fatalf("valid webhook was rejected: %v", err)
 	}
 }
 
-// TestWebhookVerifyInvalidSignature — yanlış imzalı webhook reddedilmeli
+// TestWebhookVerifyInvalidSignature — invalid signature should be rejected
 func TestWebhookVerifyInvalidSignature(t *testing.T) {
 	client := billing.NewPaddleClient("api-key", "correct-secret", true)
 
@@ -54,27 +54,27 @@ func TestWebhookVerifyInvalidSignature(t *testing.T) {
 
 	err := client.VerifyWebhookSignature([]byte(body), wrongSig)
 	if err == nil {
-		t.Error("GÜVENLİK AÇIĞI: Yanlış imzalı webhook kabul edildi!")
+		t.Error("SECURITY VULNERABILITY: webhook with invalid signature was accepted!")
 	}
 }
 
-// TestWebhookReplayAttack — eski timestamp reddedilmeli
+// TestWebhookReplayAttack — stale timestamp should be rejected
 func TestWebhookReplayAttack(t *testing.T) {
 	secret := "test-webhook-secret-paddle"
 	client := billing.NewPaddleClient("api-key", secret, true)
 
 	body := `{"event_type":"subscription.created"}`
-	// 10 dakika önce oluşturulmuş timestamp (5dk window dışında)
+	// Timestamp from 10 minutes ago (outside the 5min window)
 	oldTS := time.Now().Add(-10 * time.Minute).Unix()
 	sig := createPaddleSig(secret, body, oldTS)
 
 	err := client.VerifyWebhookSignature([]byte(body), sig)
 	if err == nil {
-		t.Error("Eski timestamp'li webhook kabul edildi! Replay attack koruması çalışmıyor!")
+		t.Error("webhook with stale timestamp was accepted! Replay attack protection is broken!")
 	}
 }
 
-// TestWebhookFutureTimestamp — gelecek timestamp de reddedilmeli
+// TestWebhookFutureTimestamp — future timestamp should also be rejected
 func TestWebhookFutureTimestamp(t *testing.T) {
 	secret := "test-webhook-secret-paddle"
 	client := billing.NewPaddleClient("api-key", secret, true)
@@ -85,42 +85,41 @@ func TestWebhookFutureTimestamp(t *testing.T) {
 
 	err := client.VerifyWebhookSignature([]byte(body), sig)
 	if err == nil {
-		t.Error("Gelecek timestampli webhook kabul edildi! Replay attack koruması eksik!")
+		t.Error("webhook with future timestamp was accepted! Replay attack protection is incomplete!")
 	}
 }
 
-// TestWebhookMissingTimestamp — timestamp eksik
+// TestWebhookMissingTimestamp — missing timestamp
 func TestWebhookMissingTimestamp(t *testing.T) {
 	client := billing.NewPaddleClient("api-key", "test-secret", true)
 	err := client.VerifyWebhookSignature([]byte(`{}`), "h1=onlysig")
 	if err == nil {
-		t.Error("ts eksik imza kabul edildi")
+		t.Error("signature without ts was accepted")
 	}
 }
 
-// TestWebhookEmptySignature — boş imza reddedilmeli
+// TestWebhookEmptySignature — empty signature should be rejected
 func TestWebhookEmptySignature(t *testing.T) {
 	client := billing.NewPaddleClient("api-key", "test-secret", true)
 	err := client.VerifyWebhookSignature([]byte(`{}`), "")
 	if err == nil {
-		t.Error("Boş imza kabul edildi")
+		t.Error("empty signature was accepted")
 	}
 }
 
-// TestGetLimitsFreePlan — Free plan kotaları doğru
+// TestGetLimitsFreePlan — free plan quotas are correct
 func TestGetLimitsFreePlan(t *testing.T) {
 	client := billing.NewPaddleClient("api-key", "secret", true)
 	limits := client.GetLimits(nil, "") // context nil = sandbox
 
-	// Free plan beklenen limitleri
-	// (paddle.go'daki PlanLimits struct'a göre)
+	// Expected free plan limits (per PlanLimits struct in paddle.go)
 	if limits.MaxTunnels <= 0 {
-		t.Errorf("Free plan MaxTunnels = %d, > 0 beklendi", limits.MaxTunnels)
+		t.Errorf("free plan MaxTunnels = %d, expected > 0", limits.MaxTunnels)
 	}
 }
 
-// TestHMACTimingSafeComparison — timing attack'a karşı dirençli mi?
-// Bu test doğrudan hmac.Equal'ı test eder, dolaylı olarak billing paketini test eder
+// TestHMACTimingSafeComparison — verifies timing-safe comparison
+// This test directly tests hmac.Equal, indirectly validating the billing package
 func TestHMACTimingSafeComparison(t *testing.T) {
 	secret := []byte("test-key")
 	body := []byte("test-body")
@@ -135,16 +134,16 @@ func TestHMACTimingSafeComparison(t *testing.T) {
 
 	// hmac.Equal timing-safe
 	if !hmac.Equal(sig1, sig2) {
-		t.Error("Aynı input için HMAC farklı sonuç verdi")
+		t.Error("HMAC produced different results for identical input")
 	}
 
-	// Farklı signature'lar eşit kabul edilmemeli
+	// Different signatures must not be considered equal
 	wrongSig := make([]byte, len(sig1))
 	copy(wrongSig, sig1)
-	wrongSig[0] ^= 0xFF // ilk byte'ı flip et
+	wrongSig[0] ^= 0xFF // flip the first byte
 	if hmac.Equal(sig1, wrongSig) {
-		t.Error("Farklı HMAC'ler eşit görünüyor!")
+		t.Error("different HMACs appear equal!")
 	}
 
-	_ = strings.ToLower // import kullanım
+	_ = strings.ToLower // keep import
 }

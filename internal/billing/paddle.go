@@ -16,12 +16,11 @@ import (
 	"github.com/tunr-dev/tunr/internal/logger"
 )
 
-// Paddle — subscription fiyatlandırma.
-// Neden Paddle? VAT hesaplamasını onlar hallediyor,
-// GDPR uyumluluğu var, Türkiye dâhil 200+ ülkede ödeme alınabiliyor.
-// Stripe kadar yaygın değil ama developer araçları için daha adil.
+// Paddle handles subscription billing.
+// We picked Paddle over Stripe because they deal with VAT, GDPR,
+// and accept payments in 200+ countries without us doing the tax math.
 
-// Plan - kullanıcının plan seviyesi
+// Plan represents a user's subscription tier
 type Plan string
 
 const (
@@ -30,16 +29,15 @@ const (
 	PlanTeam Plan = "team"
 )
 
-// PlanLimits - her plan için kota sınırları
+// PlanLimits defines the quota boundaries for each plan
 type PlanLimits struct {
 	MaxTunnels     int
-	MaxRequestsDay int  // günlük request limiti
+	MaxRequestsDay int  // daily request cap
 	CustomDomain   bool
-	LogsRetention  int  // gün
+	LogsRetention  int  // days
 	TeamMembers    int
 }
 
-// Planların kota sınırları
 var planLimits = map[Plan]PlanLimits{
 	PlanFree: {
 		MaxTunnels:     1,
@@ -64,15 +62,14 @@ var planLimits = map[Plan]PlanLimits{
 	},
 }
 
-// PaddleClient - Paddle API ile konuşur
+// PaddleClient talks to the Paddle Billing API
 type PaddleClient struct {
-	apiKey    string // GÜVENLİK: asla log'a geçmez
-	webhookSecret string // GÜVENLİK: webhook imza doğrulaması için
-	sandbox   bool   // test ortamı mı?
-	httpClient *http.Client
+	apiKey        string // SECURITY: never written to logs
+	webhookSecret string // SECURITY: used for webhook signature verification
+	sandbox       bool
+	httpClient    *http.Client
 }
 
-// baseURL - sandbox veya production
 func (c *PaddleClient) baseURL() string {
 	if c.sandbox {
 		return "https://sandbox-api.paddle.com"
@@ -80,9 +77,8 @@ func (c *PaddleClient) baseURL() string {
 	return "https://api.paddle.com"
 }
 
-// NewPaddleClient - Paddle client oluştur
-// apiKey: Paddle dashboard'dan alınan API key
-// webhookSecret: webhook imza doğrulaması için
+// NewPaddleClient creates a Paddle client.
+// webhookSecret is required for verifying inbound webhook signatures.
 func NewPaddleClient(apiKey, webhookSecret string, sandbox bool) *PaddleClient {
 	return &PaddleClient{
 		apiKey:        apiKey,
@@ -90,12 +86,12 @@ func NewPaddleClient(apiKey, webhookSecret string, sandbox bool) *PaddleClient {
 		sandbox:       sandbox,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
-			// GÜVENLİK: TLS verify kapatılmaz, default olarak aktif
+			// SECURITY: TLS verification stays on — never disable it
 		},
 	}
 }
 
-// SubscriptionStatus - Paddle abonelik durumu
+// SubscriptionStatus mirrors Paddle's subscription state machine
 type SubscriptionStatus string
 
 const (
@@ -106,31 +102,30 @@ const (
 	SubPastDue  SubscriptionStatus = "past_due"
 )
 
-// Subscription - Paddle abonelik bilgisi
+// Subscription holds Paddle subscription details
 type Subscription struct {
-	ID           string             `json:"id"`
-	Status       SubscriptionStatus `json:"status"`
-	Plan         Plan               `json:"plan"`
-	CustomerID   string             `json:"customer_id"`
-	CurrentPeriodEnd time.Time      `json:"current_period_end"`
+	ID               string             `json:"id"`
+	Status           SubscriptionStatus `json:"status"`
+	Plan             Plan               `json:"plan"`
+	CustomerID       string             `json:"customer_id"`
+	CurrentPeriodEnd time.Time          `json:"current_period_end"`
 }
 
-// GetSubscription - müşterinin aktif aboneliğini getir
+// GetSubscription fetches the customer's active subscription from Paddle
 func (c *PaddleClient) GetSubscription(ctx context.Context, customerID string) (*Subscription, error) {
-	// GÜVENLİK: customerID'yi URL'e gömer, sanitize et
+	// SECURITY: customerID goes into the URL path — sanitize it
 	if strings.ContainsAny(customerID, "/?&=#") {
-		return nil, fmt.Errorf("geçersiz customer ID formatı")
+		return nil, fmt.Errorf("invalid customer ID format")
 	}
 
 	url := fmt.Sprintf("%s/subscriptions?customer_id=%s&status=active", c.baseURL(), customerID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("request oluşturulamadı: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// GÜVENLİK: API key Bearer token olarak gönderilir
-	// Authorization header'ı log'a yazma!
+	// SECURITY: API key sent as Bearer token — do not log the Authorization header
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Paddle-Version", "1")
 	req.Header.Set("Content-Type", "application/json")
@@ -138,27 +133,26 @@ func (c *PaddleClient) GetSubscription(ctx context.Context, customerID string) (
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Paddle API isteği başarısız: %w", err)
+		return nil, fmt.Errorf("Paddle API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Rate limit kontrolü
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, fmt.Errorf("Paddle API rate limit aşıldı, biraz bekleyin")
+		return nil, fmt.Errorf("Paddle API rate limit exceeded, try again shortly")
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		// API key'i log'a yazma! Sadece hata söyle.
-		return nil, fmt.Errorf("Paddle API kimlik doğrulama hatası (API key kontrol edin)")
+		// SECURITY: do not leak the API key in error messages — just say it failed
+		return nil, fmt.Errorf("Paddle API authentication failed (check your API key)")
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Paddle API hatası (status %d)", resp.StatusCode)
+		return nil, fmt.Errorf("Paddle API error (status %d)", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024)) // max 64KB oku
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
-		return nil, fmt.Errorf("response okunamadı: %w", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var result struct {
@@ -178,11 +172,11 @@ func (c *PaddleClient) GetSubscription(ctx context.Context, customerID string) (
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("response parse hatası: %w", err)
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if len(result.Data) == 0 {
-		return nil, nil // aktif abonelik yok
+		return nil, nil // no active subscription
 	}
 
 	sub := result.Data[0]
@@ -193,12 +187,12 @@ func (c *PaddleClient) GetSubscription(ctx context.Context, customerID string) (
 		Status:           SubscriptionStatus(sub.Status),
 		CustomerID:       sub.CustomerID,
 		CurrentPeriodEnd: endTime,
-		// Plan mapping product ID'ye göre yapılır (Faz 3'te config'den okunacak)
+		// Plan mapping via product ID — will read from config in Phase 3
 		Plan: PlanPro,
 	}, nil
 }
 
-// IsPro - bu müşteri Pro veya Team planında mı?
+// IsPro checks whether the customer is on a Pro or Team plan
 func (c *PaddleClient) IsPro(ctx context.Context, customerID string) (bool, error) {
 	sub, err := c.GetSubscription(ctx, customerID)
 	if err != nil {
@@ -214,11 +208,12 @@ func (c *PaddleClient) IsPro(ctx context.Context, customerID string) (bool, erro
 	return active && isPro, nil
 }
 
-// GetLimits - müşterinin plan kotalarını getir
+// GetLimits returns the quota limits for a customer's current plan.
+// Falls back to free-tier limits on any error — better safe than sorry.
 func (c *PaddleClient) GetLimits(ctx context.Context, customerID string) PlanLimits {
 	sub, err := c.GetSubscription(ctx, customerID)
 	if err != nil {
-		logger.Warn("Plan limiti alınamadı, free plan limitleri uygulanıyor: %v", err)
+		logger.Warn("Failed to fetch plan limits, falling back to free tier: %v", err)
 		return planLimits[PlanFree]
 	}
 
@@ -235,22 +230,22 @@ func (c *PaddleClient) GetLimits(ctx context.Context, customerID string) PlanLim
 
 // ─── WEBHOOK HANDLER ────────────────────────────────────────────────────────
 
-// WebhookEvent - Paddle'dan gelen webhook olayı
+// WebhookEvent represents an inbound Paddle webhook event
 type WebhookEvent struct {
-	EventID   string          `json:"event_id"`
-	EventType string          `json:"event_type"`
-	OccurredAt string         `json:"occurred_at"`
-	Data      json.RawMessage `json:"data"`
+	EventID    string          `json:"event_id"`
+	EventType  string          `json:"event_type"`
+	OccurredAt string          `json:"occurred_at"`
+	Data       json.RawMessage `json:"data"`
 }
 
-// VerifyWebhookSignature - Paddle webhook imzasını doğrula
-// GÜVENLİK: Bu kritik! İmzasız webhook → billing bypass riski.
-// Her gelen webhook'un gerçekten Paddle'dan geldiğini doğrularız.
+// VerifyWebhookSignature validates the Paddle webhook HMAC signature.
+// SECURITY: This is critical — unsigned webhooks would let anyone bypass billing.
+// Every inbound webhook must be proven to originate from Paddle.
 func (c *PaddleClient) VerifyWebhookSignature(payload []byte, signatureHeader string) error {
-	// Paddle-Signature header formatı: ts=1234567890;h1=HMAC_HASH
+	// Paddle-Signature header format: ts=1234567890;h1=HMAC_HASH
 	parts := strings.Split(signatureHeader, ";")
 	if len(parts) < 2 {
-		return fmt.Errorf("geçersiz webhook imza formatı")
+		return fmt.Errorf("invalid webhook signature format")
 	}
 
 	var timestamp, signature string
@@ -264,114 +259,104 @@ func (c *PaddleClient) VerifyWebhookSignature(payload []byte, signatureHeader st
 	}
 
 	if timestamp == "" || signature == "" {
-		return fmt.Errorf("webhook imzası eksik (ts veya h1 yok)")
+		return fmt.Errorf("webhook signature incomplete (missing ts or h1)")
 	}
 
-	// Replay attack koruması: timestamp 5 dakikadan eskiyse reddet
-	// Biri eski bir webhook'u tekrar göndermeye çalışıyor olabilir
+	// SECURITY: reject webhooks older than 5 minutes to prevent replay attacks
 	ts, err := parseTimestamp(timestamp)
 	if err != nil {
-		return fmt.Errorf("webhook timestamp parse hatası: %w", err)
+		return fmt.Errorf("failed to parse webhook timestamp: %w", err)
 	}
 	age := time.Since(ts)
 	if age > 5*time.Minute || age < -1*time.Minute {
-		return fmt.Errorf("webhook timestamp çok eski veya gelecekte (%v)", age)
+		return fmt.Errorf("webhook timestamp out of range (%v)", age)
 	}
 
-	// HMAC-SHA256 doğrulaması
-	// signed_payload = timestamp + ":" + body
+	// HMAC-SHA256 verification: signed_payload = timestamp + ":" + body
 	signedPayload := timestamp + ":" + string(payload)
 
 	mac := hmac.New(sha256.New, []byte(c.webhookSecret))
 	mac.Write([]byte(signedPayload))
 	expectedSig := hex.EncodeToString(mac.Sum(nil))
 
-	// GÜVENLİK: hmac.Equal timing-safe karşılaştırma
-	// String == operatörü timing attack'a açık, bunu kullanmıyoruz
+	// SECURITY: hmac.Equal is timing-safe — using == would leak info via timing side-channels
 	gotSigBytes, err := hex.DecodeString(signature)
 	if err != nil {
-		return fmt.Errorf("imza hex decode hatası: %w", err)
+		return fmt.Errorf("signature hex decode failed: %w", err)
 	}
 	expectedSigBytes, _ := hex.DecodeString(expectedSig)
 
 	if !hmac.Equal(gotSigBytes, expectedSigBytes) {
-		return fmt.Errorf("webhook imzası doğrulanamadı (sahte veya değiştirilmiş istek?)")
+		return fmt.Errorf("webhook signature verification failed (forged or tampered request?)")
 	}
 
 	return nil
 }
 
-// HandleWebhook - gelen webhook olayını işle
-// HTTP handler olarak kullanılabilir
+// HandleWebhook processes inbound Paddle webhook events as an HTTP handler
 func (c *PaddleClient) HandleWebhook(w http.ResponseWriter, r *http.Request) {
-	// Sadece POST kabul et
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Body'yi oku (max 1MB, Paddle webhook'ları çok büyük olmamalı)
+	// Paddle webhooks shouldn't be huge — cap at 1MB
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
-		http.Error(w, "body okunamadı", http.StatusBadRequest)
+		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return
 	}
 
-	// İmzayı doğrula
 	sig := r.Header.Get("Paddle-Signature")
 	if err := c.VerifyWebhookSignature(body, sig); err != nil {
-		// GÜVENLİK: Hata detayını client'a verme, sadece logla
-		logger.Warn("Webhook imza doğrulaması başarısız: %v", err)
+		// SECURITY: don't expose verification details to the client, just log it
+		logger.Warn("Webhook signature verification failed: %v", err)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	// Olayı parse et
 	var event WebhookEvent
 	if err := json.Unmarshal(body, &event); err != nil {
-		http.Error(w, "geçersiz payload", http.StatusBadRequest)
+		http.Error(w, "invalid payload", http.StatusBadRequest)
 		return
 	}
 
-	// Olay tipine göre işle
 	switch event.EventType {
 	case "subscription.activated", "subscription.updated":
-		logger.Info("Paddle webhook: abonelik güncellendi (%s)", event.EventID)
-		// TODO: kullanıcı planını DB'de güncelle
+		logger.Info("Paddle webhook: subscription updated (%s)", event.EventID)
+		// TODO: update user plan in DB
 	case "subscription.canceled":
-		logger.Info("Paddle webhook: abonelik iptal edildi (%s)", event.EventID)
-		// TODO: kullanıcıyı free plana düşür
+		logger.Info("Paddle webhook: subscription canceled (%s)", event.EventID)
+		// TODO: downgrade user to free plan
 	case "subscription.past_due":
-		logger.Warn("Paddle webhook: ödeme gecikmesi (%s)", event.EventID)
-		// TODO: kullanıcıya bildirim gönder
+		logger.Warn("Paddle webhook: payment past due (%s)", event.EventID)
+		// TODO: notify user about overdue payment
 	case "transaction.completed":
-		logger.Info("Paddle webhook: ödeme tamamlandı (%s)", event.EventID)
+		logger.Info("Paddle webhook: payment completed (%s)", event.EventID)
 	default:
-		logger.Debug("Bilinmeyen Paddle webhook eventi: %s", event.EventType)
+		logger.Debug("Unknown Paddle webhook event: %s", event.EventType)
 	}
 
-	// Her zaman 200 dön - Paddle 2xx görürse başarılı sayar
-	// Hata dönersen tekrar gönderir (retry fırtınası başlar)
+	// Always return 200 — Paddle treats any 2xx as success.
+	// Return an error and you'll trigger a retry storm.
 	w.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprint(w, `{"status":"ok"}`)
 }
 
-// parseTimestamp - "1234567890" formatındaki timestamp'i parse et
 func parseTimestamp(s string) (time.Time, error) {
 	var unix int64
 	_, err := fmt.Sscanf(s, "%d", &unix)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("geçersiz timestamp: %s", s)
+		return time.Time{}, fmt.Errorf("invalid timestamp: %s", s)
 	}
 	return time.Unix(unix, 0), nil
 }
 
-// CreateCheckoutSession - Paddle checkout session oluştur
-// (Landing page'deki "Satın Al" butonuna tıklanınca çağrılır)
+// CreateCheckoutSession starts a Paddle checkout flow (called when "Buy" is clicked)
 func (c *PaddleClient) CreateCheckoutSession(ctx context.Context, priceID, customerEmail string) (string, error) {
-	// GÜVENLİK: email formatını doğrula
+	// SECURITY: validate email format before sending to Paddle
 	if !isValidEmail(customerEmail) {
-		return "", fmt.Errorf("geçersiz e-posta formatı")
+		return "", fmt.Errorf("invalid email format")
 	}
 
 	payload := map[string]interface{}{
@@ -405,7 +390,7 @@ func (c *PaddleClient) CreateCheckoutSession(ctx context.Context, priceID, custo
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("checkout session oluşturulamadı (status %d)", resp.StatusCode)
+		return "", fmt.Errorf("failed to create checkout session (status %d)", resp.StatusCode)
 	}
 
 	var result struct {
@@ -424,7 +409,7 @@ func (c *PaddleClient) CreateCheckoutSession(ctx context.Context, priceID, custo
 	return result.Data.ID, nil
 }
 
-// isValidEmail - basit email validasyonu
+// isValidEmail does a quick-and-dirty email sanity check — not RFC 5322, but good enough
 func isValidEmail(email string) bool {
 	if len(email) > 254 || len(email) < 3 {
 		return false

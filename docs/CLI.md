@@ -1,102 +1,142 @@
-# Tunr CLI Referansı
+# Tunr CLI Reference
 
-Bu doküman, `tunr` komut satırı aracının (CLI) resmi kullanım referansıdır.
+This document is the official usage reference for the `tunr` command-line interface (CLI).
 
-## Temel Kurulum ve Kullanım
+## Setup & Health Check
 
 ### `tunr doctor`
-Sisteminizin ve tunr kurulumunuzun sağlığını kontrol edin.
-* Bağlantı ve binary kontrolü
-* Config dosyası doğrulaması
-* Relay sunucu bağlantısı
-* İşletim sistemi servis durumu
+Verify that your system and tunr installation are healthy and ready to go.
+* Binary and connectivity checks
+* Configuration file validation
+* Relay server reachability
+* OS-level service/daemon status
 
 ### `tunr config`
-Workspace ve kullanıcı ayarlarını yönetin.
-* `tunr config init`: Bulunduğunuz proje dizininde bir `.tunr.json` oluşturur.
+Manage workspace and user settings.
+* `tunr config init`: Creates a `.tunr.json` configuration file in the current project directory.
 
 ---
 
-## Tünel Yönetimi (Core Commands)
+## Tunnel Management (Core Commands)
 
 ### `tunr share`
-Localport'u < 3 saniyede genel (public) bir URL üzerinden dünyaya açar.
+Expose a local port to the public internet via a secure tunnel URL in under 3 seconds.
 
-**Zorunlu Parametreler:**
-* `-p, --port <int>`: Yönlendirilecek lokal port (Örn: `3000`)
+**Required Flags:**
+* `-p, --port <int>`: The local port to forward (e.g. `3000`).
 
-**Opsiyonel Parametreler:**
-* `-s, --subdomain <string>`: Özel alt alan adı tahsisi (Pro hesaplara özel). Örn: `myapp` -> `myapp.tunr.sh`
-* `--no-open`: Tünel başarılı çalıştığında tarayıcıyı otomatik açmayı engeller.
-* `--json`: Konsol çıktısını izole bir şekilde scriptlerde kullanılmak üzere JSON formatına basar (CI/CD / MCP bot uyumu).
+**Optional Flags:**
+* `-s, --subdomain <string>`: Reserve a custom subdomain (Pro accounts only). Example: `myapp` → `myapp.tunr.sh`
+* `--domain <string>`: Use a fully custom domain instead of the default `*.tunr.sh` subdomain. Point your domain's DNS to Tunr's relay and pass it here. Example: `--domain demo.mycompany.com`
+* `--no-open`: Prevent the browser from opening automatically when the tunnel starts.
+* `--json`: Output tunnel information as JSON instead of the human-friendly table. Useful for CI/CD pipelines and MCP agent integrations.
 
-**Vibecoder Demo Bayrakları:**
-Freelancer ve ajansların müşterilerine kusursuz bir ürün denetimi sunabilmeleri ve aksamaları önlemeleri için geliştirilmiş ileri seviye pro-proxy bayrakları.
+**Vibecoder Demo Flags:**
+Advanced pro-proxy flags designed for freelancers and agencies to deliver flawless product demos to clients and prevent live-demo disasters.
 
-* `--demo`: Okuma modunu (read-only) açar. Zararlı POST, PUT, DELETE metotlarını proxy seviyesinde durdurur. Geriye "201 Created" veya "200 Success" gibi sahte mock json'lar döndürür. Müşteri butona tıklayabilir ama "Siparişi Sil" tuşu backend veritabanını bozmaz.
-* `--freeze`: Hata-Tölerans Modu. Sunucunuz çökse bile proxy son başarılı 200 GET isteklerini (HTML, CSS, imaj) önbelleğinden (`X-Tunr-Freeze-Cache`) vermeye devam eder. Müşteri hiçbir şey hissetmez.
-* `--inject-widget`: Sunulan HTML belgesinin sonuna şeffaf bir "Feedback" arayüzü ile hata ayıklama aracı ekler. Ekranda pin bırakılabilir ve js consol'unda alınan remote `window.onerror` logları eşzamanlı olarak kendi CLI monitörünüze düşer.
-* `--auto-login <string>`: Her bağlantıda tarayıcıya otomatik olarak auth cookie'si veya JWT `Authorization` header'ı enjekte eder. Örn: `--auto-login "session=demo-user-1"`. Müşteriniz linki açtığında login ekranıyla uğraşmadan direkt panelde olur.
+* `--demo`: Enables read-only mode. Intercepts and blocks destructive `POST`, `PUT`, `PATCH`, and `DELETE` requests at the proxy layer. Returns realistic mock JSON responses such as `{"status": "demo_success"}` with a `200 OK` status code. The client can click every button — but "Delete Order" will never touch your database.
+* `--freeze`: Crash-Tolerance Mode. If your local server crashes or returns errors, the proxy continues serving the last successful `2xx` responses (HTML, CSS, images, JSON) from its in-memory cache (`X-Tunr-Freeze-Cache`). The client never sees a thing.
+* `--inject-widget`: Appends a transparent Feedback UI and remote debugging overlay to every served HTML document. Clients can drop pins on the screen to report issues, and all `window.onerror` console logs from the remote browser are streamed to your local CLI monitor in real time.
+* `--auto-login <string>`: Automatically injects an auth cookie or JWT `Authorization` header into every incoming request. Example: `--auto-login "Cookie: session=demo-user-1"`. When the client opens your link, they land directly in the authenticated dashboard — no login screen.
 
-#### Örnekler
+#### Examples
 ```bash
-# Basit Paylaşım
+# Simple share
 tunr share --port 8080
 
-# Subdomain Atamalı
-tunr share --port 8080 -s benimapp
+# With a reserved subdomain
+tunr share --port 8080 -s myapp
 
-# Komple Vibecoder Müşteri Paketini Aç
+# With a custom domain
+tunr share --port 8080 --domain demo.mycompany.com
+
+# Full Vibecoder client demo package
 tunr share -p 3000 --demo --freeze --inject-widget --auto-login "Cookie: session=xyz"
+
+# JSON output for CI/CD
+tunr share --port 3000 --json
 ```
 
 ---
 
-## Arka Plan ve Daemon Çalışma
+## Background & Daemon Mode
 
 ### `tunr start`
-Arka planda (daemon olarak) kalıcı tünel açar. Sunucu veya terminal kapansa da işlem arkada devam eder.
+Open a persistent tunnel that runs in the background as a daemon. The tunnel stays alive even if you close the terminal or the server restarts.
 ```bash
 tunr start --port 3000
 ```
 
 ### `tunr stop`
-Arkada sessizce çalışan tünelleri güvenlice durdurur.
+Gracefully shut down all background tunnels.
 ```bash
 tunr stop
 ```
 
 ### `tunr status`
-Mevcut aktif tünellerin (hem ön hem arka plan) tüm durumunu, istatistiklerini tabulalar halinde listeler.
+List all active tunnels (both foreground and background) with connection stats, uptime, and URL information in a tabular format.
 ```bash
 tunr status
 ```
 
 ---
 
-## Log ve Debug İşlemleri
+## Logs & Debugging
 
 ### `tunr logs`
-Tüneller üzerinden geçen tüm request (istek) verilerini anlık (real-time websocket stream) terminal üzerinden gösterir.
+Display all HTTP request data flowing through your tunnels in real time via a WebSocket stream in the terminal.
 ```bash
 tunr logs
 ```
 
+**Optional Flags:**
+* `--follow`: Stream logs continuously in real time, similar to `tail -f`. The command stays open and prints new entries as they arrive.
+* `--flush`: Clear all stored log entries. Useful for cleaning up between debugging sessions.
+* `--json`: Output log entries in JSON format for programmatic consumption or piping into other tools.
+
+#### Examples
+```bash
+# Stream logs in real time
+tunr logs --follow
+
+# Clear all stored logs
+tunr logs --flush
+
+# Output logs as JSON (great for jq piping)
+tunr logs --json
+```
+
 ### `tunr replay`
-Kaydedilen bir HTTP request id'sine göre o işlemin client üzerinden sanki yeniden tetikleniyormuş gibi birebir aynısını test için sunucuya aktarır. 
+Replay a previously recorded HTTP request by its ID, re-sending the exact same request to your local server as if the original client had triggered it again. Invaluable for reproducing and debugging issues.
 ```bash
 tunr replay abc-123-xyz
 ```
 
 ### `tunr open`
-Eğer CLI terminalini tercih etmiyorsanız, request loglarını ve ayarlamaları görmek adına tunr'nun görsel arabirimini barındıran Embedded React Localhost Dashboard'u sistem tarayıcınızda açar.
+Launch Tunr's embedded React dashboard (localhost Web UI) in your default system browser. Provides a visual interface for inspecting request logs, managing tunnels, and adjusting settings — ideal if you prefer a GUI over the terminal.
 
 ---
 
-## AI Bot/Agent Entegrasyon
+## Maintenance
+
+### `tunr update`
+Self-update the tunr CLI binary to the latest release from GitHub. Checks for a newer version and replaces the current binary in place.
+```bash
+tunr update
+```
+
+### `tunr uninstall`
+Completely remove the tunr binary and its configuration files from the system. Stops any running daemons before cleanup.
+```bash
+tunr uninstall
+```
+
+---
+
+## AI Agent Integration
 
 ### `tunr mcp`
-Claude Desktop veya Cursor IDE içerisinde doğrudan bir Model Context Protocol sunucusunu başlatarak Yapay Zekaların tünel oluşturmasına ve logları okumasına izin verir. 
+Start a Model Context Protocol (MCP) server directly inside Claude Desktop or Cursor IDE. This allows AI agents to programmatically create tunnels, read request logs, and interact with your development environment.
 ```bash
 tunr mcp
 ```

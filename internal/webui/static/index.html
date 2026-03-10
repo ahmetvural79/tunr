@@ -1,17 +1,17 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>tunr dashboard</title>
     <!-- 
-    Bu dashboard Go binary'nin içine gömülüdür.
-    Herhangi bir CDN veya internet bağlantısı gerekmez.
-    "Self-contained" olduğu için offline da çalışır.
+    This dashboard is embedded inside the Go binary.
+    No CDN or internet connection is required.
+    It works offline since it is self-contained.
   -->
     <style>
-        /* Aynı design system — landing page ile tutarlı */
+        /* Same design system — consistent with landing page */
         :root {
             --bg: #080b14;
             --surface: #0d1220;
@@ -344,7 +344,7 @@
             background: var(--elevated);
         }
 
-        /* Yeni kayıt highlight - kayıt gelince parlıyor */
+        /* New entry highlight — flashes when a new entry arrives */
         .log-row.new {
             animation: highlight-row 0.8s ease-out;
         }
@@ -359,7 +359,7 @@
             }
         }
 
-        /* Status code renkleri */
+        /* Status code colors */
         .status-2xx {
             color: var(--green);
         }
@@ -376,7 +376,7 @@
             color: var(--red);
         }
 
-        /* Method renkleri */
+        /* Method colors */
         .method-GET {
             color: var(--green);
         }
@@ -409,7 +409,7 @@
             color: var(--text-secondary);
         }
 
-        /* millisecond durasyon rengi */
+        /* Millisecond duration color */
         .dur-fast {
             color: var(--green);
         }
@@ -489,59 +489,59 @@
         </div>
         <div class="status-badge">
             <span class="dot-live" id="live-dot"></span>
-            <span id="status-text">Bağlanıyor...</span>
+            <span id="status-text">Connecting...</span>
         </div>
     </div>
 
     <!-- MAIN LAYOUT -->
     <div class="main">
 
-        <!-- SIDEBAR: Tunnel listesi -->
+        <!-- SIDEBAR: Tunnel list -->
         <div class="sidebar">
-            <div class="sidebar-title">Aktif Tunnel'lar</div>
+            <div class="sidebar-title">Active Tunnels</div>
             <div id="tunnel-list">
-                <!-- JS ile doldurulur -->
+                <!-- Populated by JS -->
                 <div class="empty-state" style="padding: 40px 0;">
                     <div class="empty-icon">🚇</div>
-                    <div class="empty-text" style="font-size:12px">Tunnel yok</div>
+                    <div class="empty-text" style="font-size:12px">No tunnels</div>
                 </div>
             </div>
         </div>
 
-        <!-- CONTENT: Loglar -->
+        <!-- CONTENT: Logs -->
         <div class="content">
             <div class="tabs">
-                <div class="tab active" data-tab="logs">HTTP Loglar</div>
-                <div class="tab" data-tab="requests">İstek Detayı</div>
+                <div class="tab active" data-tab="logs">HTTP Logs</div>
+                <div class="tab" data-tab="requests">Request Detail</div>
             </div>
 
             <!-- LOG TOOLBAR -->
             <div class="log-toolbar">
-                <input type="text" class="log-search" id="log-search" placeholder="Filtrele: path, method, status..." />
-                <button class="btn-sm btn-pause" id="btn-pause" onclick="togglePause()">⏸ Duraklat</button>
-                <button class="btn-sm btn-clear" onclick="clearLogs()">🗑 Temizle</button>
-                <span class="log-count" id="log-count">0 istek</span>
+                <input type="text" class="log-search" id="log-search" placeholder="Filter: path, method, status..." />
+                <button class="btn-sm btn-pause" id="btn-pause" onclick="togglePause()">⏸ Pause</button>
+                <button class="btn-sm btn-clear" onclick="clearLogs()">🗑 Clear</button>
+                <span class="log-count" id="log-count">0 requests</span>
             </div>
 
             <!-- LOG TABLE -->
             <div class="log-container" id="log-container">
                 <div class="empty-state" id="empty-state">
                     <div class="empty-icon">📡</div>
-                    <div class="empty-text">Tunnel'ınıza istek bekliyor...</div>
+                    <div class="empty-text">Waiting for requests...</div>
                     <div style="font-size:12px;color:var(--text-dim);margin-top:4px">
-                        Gerçek zamanlı HTTP log'lar burada görünecek
+                        Real-time HTTP logs will appear here
                     </div>
                 </div>
 
                 <table class="log-table" id="log-table" style="display:none">
                     <thead>
                         <tr>
-                            <th style="width:80px">Saat</th>
+                            <th style="width:80px">Time</th>
                             <th style="width:70px">Method</th>
                             <th>Path</th>
                             <th style="width:60px">Status</th>
-                            <th style="width:70px">Süre</th>
-                            <th style="width:80px">Boyut</th>
+                            <th style="width:70px">Duration</th>
+                            <th style="width:80px">Size</th>
                         </tr>
                     </thead>
                     <tbody id="log-tbody"></tbody>
@@ -550,27 +550,27 @@
         </div>
     </div>
 
-    <!-- Scroll to bottom butonu -->
-    <button class="scroll-bottom-btn" id="scroll-btn" title="En alta git" onclick="scrollToBottom()">↓</button>
+    <!-- Scroll to bottom button -->
+    <button class="scroll-bottom-btn" id="scroll-btn" title="Scroll to bottom" onclick="scrollToBottom()">↓</button>
 
     <script>
         // ── Dashboard JS ──
-        // WebSocket bağlantısı ile gerçek zamanlı log takibi
-        // Vanilla JS — React'a gerek yok, bu bir terminal aracı
+        // Real-time log streaming via WebSocket
+        // Vanilla JS — no need for React, this is a terminal tool
 
         let ws = null;
         let allLogs = [];
         let paused = false;
         let autoScroll = true;
-        const MAX_DISPLAY = 500; // tabloda max gösterilen satır
+        const MAX_DISPLAY = 500; // max rows displayed in the table
 
-        // WebSocket bağlantısı kur
+        // Establish WebSocket connection
         function connectWS() {
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${location.host}/api/ws/logs`);
 
             ws.onopen = () => {
-                document.getElementById('status-text').textContent = 'Canlı';
+                document.getElementById('status-text').textContent = 'Live';
                 document.getElementById('live-dot').style.background = 'var(--green)';
             };
 
@@ -580,35 +580,35 @@
                     const entry = JSON.parse(event.data);
                     addLogEntry(entry);
                 } catch (e) {
-                    // JSON parse hatasını sessizce geç
+                    // Silently ignore JSON parse errors
                 }
             };
 
             ws.onclose = () => {
-                document.getElementById('status-text').textContent = 'Bağlantı kesildi — yeniden bağlanılıyor...';
+                document.getElementById('status-text').textContent = 'Disconnected — reconnecting...';
                 document.getElementById('live-dot').style.background = 'var(--yellow)';
-                // 2s sonra yeniden bağlan
+                // Reconnect after 2s
                 setTimeout(connectWS, 2000);
             };
 
             ws.onerror = () => {
-                document.getElementById('status-text').textContent = 'Bağlantı hatası';
+                document.getElementById('status-text').textContent = 'Connection error';
                 document.getElementById('live-dot').style.background = 'var(--red)';
             };
         }
 
-        // Log entry ekle
+        // Add log entry
         function addLogEntry(entry) {
             allLogs.push(entry);
 
             const searchVal = document.getElementById('log-search').value.toLowerCase();
             if (!matchesFilter(entry, searchVal)) return;
 
-            renderLogRow(entry, true); // true = yeni kayıt
+            renderLogRow(entry, true); // true = new entry
             updateCount();
         }
 
-        // Filtre kontrolü
+        // Filter check
         function matchesFilter(entry, filter) {
             if (!filter) return true;
             return (
@@ -618,7 +618,7 @@
             );
         }
 
-        // Satır render et
+        // Render a table row
         function renderLogRow(entry, isNew = false) {
             const tbody = document.getElementById('log-tbody');
             const table = document.getElementById('log-table');
@@ -627,7 +627,7 @@
             table.style.display = '';
             empty.style.display = 'none';
 
-            // Max satır kontrolü — tablonun kilometrelerce uzamasını önle
+            // Max row limit — prevent the table from growing endlessly
             const rows = tbody.querySelectorAll('tr');
             if (rows.length >= MAX_DISPLAY) {
                 tbody.removeChild(rows[0]);
@@ -636,7 +636,7 @@
             const row = document.createElement('tr');
             row.className = 'log-row' + (isNew ? ' new' : '');
 
-            const time = new Date(entry.time).toLocaleTimeString('tr-TR', {
+            const time = new Date(entry.time).toLocaleTimeString('en-US', {
                 hour: '2-digit', minute: '2-digit', second: '2-digit'
             });
 
@@ -675,7 +675,7 @@
         function togglePause() {
             paused = !paused;
             const btn = document.getElementById('btn-pause');
-            btn.textContent = paused ? '▶ Devam' : '⏸ Duraklat';
+            btn.textContent = paused ? '▶ Resume' : '⏸ Pause';
             btn.style.color = paused ? 'var(--yellow)' : 'var(--cyan)';
         }
 
@@ -689,15 +689,15 @@
 
         function updateCount() {
             const n = allLogs.length;
-            document.getElementById('log-count').textContent = `${n.toLocaleString('tr')} istek`;
+            document.getElementById('log-count').textContent = `${n.toLocaleString('en-US')} requests`;
         }
 
-        // Arama filtresi
+        // Search filter
         let filterTimer = null;
         document.getElementById('log-search').addEventListener('input', (e) => {
             clearTimeout(filterTimer);
             filterTimer = setTimeout(() => {
-                // Filtreyi uygula — tüm logları yeniden render et
+                // Apply filter — re-render all logs
                 document.getElementById('log-tbody').innerHTML = '';
                 const filter = e.target.value.toLowerCase();
                 const filtered = allLogs.filter(l => matchesFilter(l, filter));
@@ -706,7 +706,7 @@
             }, 200);
         });
 
-        // Scroll takibi — scroll bottom butonu
+        // Scroll tracking — scroll-to-bottom button
         document.getElementById('log-container').addEventListener('scroll', (e) => {
             const el = e.target;
             const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 50;
@@ -714,12 +714,12 @@
             document.getElementById('scroll-btn').classList.toggle('visible', !atBottom);
         });
 
-        // Tunnel listesi polling (5 saniyede bir)
+        // Tunnel list polling (every 5 seconds)
         function refreshTunnels() {
             fetch('/api/tunnels')
                 .then(r => r.json())
                 .then(data => renderTunnels(data.tunnels || []))
-                .catch(() => { }); // sessizce geç
+                .catch(() => { }); // silently ignore
         }
 
         function renderTunnels(tunnels) {
@@ -727,7 +727,7 @@
             if (!tunnels.length) {
                 list.innerHTML = `
           <div style="text-align:center;color:var(--text-dim);padding:40px 0;font-size:12px">
-            Aktif tunnel yok<br/>
+            No active tunnels<br/>
             <code style="color:var(--cyan);font-size:11px">tunr share --port 3000</code>
           </div>`;
                 return;
@@ -743,14 +743,14 @@
             <a href="${t.public_url}" target="_blank">${t.public_url}</a>
           </div>
           <div class="tunnel-meta">
-            <span>${t.request_count || 0} istek</span>
+            <span>${t.request_count || 0} requests</span>
             <span>${t.id}</span>
           </div>
         </div>
       `).join('');
         }
 
-        // Başlat
+        // Initialize
         connectWS();
         refreshTunnels();
         setInterval(refreshTunnels, 5000);

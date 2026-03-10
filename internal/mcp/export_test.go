@@ -6,8 +6,8 @@ import (
 	"github.com/tunr-dev/tunr/internal/inspector"
 )
 
-// NewForTest — test için Server oluşturur, custom io.Reader/Writer ile
-// Production'da stdin/stdout kullanılır, testte buffer kullanılır
+// NewForTest — creates a Server for testing with custom io.Reader/Writer
+// Production uses stdin/stdout, tests use buffers
 func NewForTest(in io.Reader, out io.Writer) *Server {
 	ins := inspector.New(100)
 	s := New(ins, nil)

@@ -8,7 +8,7 @@ import (
 	"github.com/fatih/color"
 )
 
-// LogLevel - hangi seviyelerde bağırıyoruz
+// LogLevel controls how loud we get
 type LogLevel int
 
 const (
@@ -19,16 +19,16 @@ const (
 	FATAL
 )
 
-// Logger - ne log edileceğini ve ne zaman susulacağını bilen adam
+// Logger knows what to say and when to shut up
 type Logger struct {
 	level  LogLevel
 	prefix string
 }
 
-// tunr'nun varsayılan logger'ı - global çünkü hayat yeterince karmaşık
+// Global default logger — because life is complicated enough without DI for logging
 var defaultLogger = &Logger{level: INFO}
 
-// renkli formatterlar - terminale biraz renk katalım, hayat zaten yeterince gri
+// Color styles — terminals deserve a splash of color
 var (
 	debugStyle = color.New(color.FgHiBlack, color.Bold)
 	infoStyle  = color.New(color.FgCyan, color.Bold)
@@ -39,33 +39,32 @@ var (
 	urlStyle   = color.New(color.FgGreen, color.Bold, color.Underline)
 )
 
-// New - yeni logger yarat, isteğe bağlı prefix ile
+// New creates a logger with an optional prefix
 func New(prefix string) *Logger {
 	return &Logger{level: INFO, prefix: prefix}
 }
 
-// SetLevel - log seviyesini ayarla (debug modu için)
+// SetLevel adjusts verbosity — crank it to DEBUG when things get weird
 func SetLevel(l LogLevel) {
 	defaultLogger.level = l
 }
 
-// timestamp - güzel tarih formatı, çünkü Unix epoch kimse okuyamaz
+// timestamp formats time for humans — nobody reads Unix epochs
 func timestamp() string {
 	return timeStyle.Sprint(time.Now().Format("15:04:05"))
 }
 
-// sanitize - KRITIK GÜVENLİK: token/secret gibi hassas değerlerin
-// yanlışlıkla log'a geçmesini önlüyoruz. Açık kaynak = herkes okur.
+// SECURITY: Prevents tokens/secrets from accidentally ending up in logs.
+// This is open source — assume everyone is reading.
 func sanitize(msg string) string {
-	// TODO: daha gelişmiş regex ile JWT, API key vb. maskele
-	// Şimdilik basic string uzunluk kontrolü
+	// TODO: mask JWTs, API keys, etc. with proper regex
 	if len(msg) > 2000 {
 		return msg[:2000] + "... [truncated for sanity]"
 	}
 	return msg
 }
 
-// Debug - "neden bu değer nil ki" dediğin anlarda
+// Debug is for those "why is this nil?!" moments
 func Debug(format string, args ...any) {
 	if defaultLogger.level <= DEBUG {
 		msg := fmt.Sprintf(format, args...)
@@ -77,7 +76,7 @@ func Debug(format string, args ...any) {
 	}
 }
 
-// Info - "her şey yolunda" anları için
+// Info is the "everything is fine" channel
 func Info(format string, args ...any) {
 	if defaultLogger.level <= INFO {
 		msg := fmt.Sprintf(format, args...)
@@ -89,7 +88,7 @@ func Info(format string, args ...any) {
 	}
 }
 
-// Warn - "bu olmamalıydı ama idare eder" durumları
+// Warn is for "this shouldn't happen but we'll survive" situations
 func Warn(format string, args ...any) {
 	if defaultLogger.level <= WARN {
 		msg := fmt.Sprintf(format, args...)
@@ -101,7 +100,7 @@ func Warn(format string, args ...any) {
 	}
 }
 
-// Error - "oh hayır" anları
+// Error is the "oh no" channel
 func Error(format string, args ...any) {
 	if defaultLogger.level <= ERROR {
 		msg := fmt.Sprintf(format, args...)
@@ -113,7 +112,7 @@ func Error(format string, args ...any) {
 	}
 }
 
-// Fatal - "bu da mı olmadı, eve gidiyorum" anları
+// Fatal means we're done here — nobody wants to see raw panic traces in production
 func Fatal(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintf(os.Stderr, "%s %s %s\n",
@@ -124,18 +123,17 @@ func Fatal(format string, args ...any) {
 	os.Exit(1)
 }
 
-// PrintURL - başarılı tunnel URL'sini dev'e özenle göster
+// PrintURL displays the tunnel URL with appropriate fanfare
 func PrintURL(tunnelURL string) {
 	fmt.Println()
 	fmt.Printf("  %s  %s\n",
-		infoStyle.Sprint("🚀 Tunnel aktif:"),
+		infoStyle.Sprint("🚀 Tunnel active:"),
 		urlStyle.Sprint(tunnelURL),
 	)
 	fmt.Println()
 }
 
-// PrintBanner - tunr başladığında gösterilen baner
-// (çünkü ASCII art her şeyi daha resmi gösterir)
+// PrintBanner shows the startup banner — because ASCII art makes everything official
 func PrintBanner(version string) {
 	banner := color.New(color.FgCyan, color.Bold)
 	banner.Printf(`

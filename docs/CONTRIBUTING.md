@@ -1,6 +1,6 @@
 # Contributing to tunr
 
-Thank you for your interest in contributing! tunr is open source under the MIT license and welcomes contributions from the community.
+Thank you for your interest in contributing! tunr is open source under the PolyForm Shield 1.0.0 license and welcomes contributions from the community.
 
 ## What's Open Source
 
@@ -75,4 +75,4 @@ chore: bump gorilla/websocket to v1.5.3
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+By contributing, you agree that your contributions will be licensed under the [PolyForm Shield License 1.0.0](LICENSE). This means your code is open source — anyone can use, modify, and share it — but it cannot be used to build a competing tunnel service.

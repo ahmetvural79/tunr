@@ -8,56 +8,40 @@ import (
 	"runtime"
 )
 
-// Config - tunr'nun beyni. Burayı dağıtma.
+// Config holds all tunr settings. Treat this struct with care.
 type Config struct {
-	// Version - config formatı değişirse migration yaparız
-	Version int `json:"version"`
-
-	// Auth - token bilgileri. DİKKAT: asla log'a yazma!
-	Auth AuthConfig `json:"auth"`
-
-	// Tunnel - varsayılan tunnel ayarları
-	Tunnel TunnelConfig `json:"tunnel"`
-
-	// UI - display tercihleri
-	UI UIConfig `json:"ui"`
+	Version int          `json:"version"`
+	Auth    AuthConfig   `json:"auth"`
+	Tunnel  TunnelConfig `json:"tunnel"`
+	UI      UIConfig     `json:"ui"`
 }
 
-// AuthConfig - güvenlik kritik alan. Token asla plaintext config'e yazılmaz.
-// OS keychain kullanıyoruz (Faz 1'de implement edilecek).
-// Şimdilik boş, ama placeholder olarak burada duruyor.
+// AuthConfig stores non-secret auth metadata. Actual tokens live in the OS keychain.
 type AuthConfig struct {
-	// Email - kullanıcı email adresi (token değil, bu güvenli)
-	Email string `json:"email,omitempty"`
-	// KeychainService - keychain'deki servis adı
+	Email           string `json:"email,omitempty"`
 	KeychainService string `json:"keychain_service,omitempty"`
 }
 
-// TunnelConfig - tunnel varsayılanları
+// TunnelConfig holds tunnel defaults — region "auto" picks the nearest edge
 type TunnelConfig struct {
-	// Region - tercih edilen bölge (auto = en yakın edge)
-	Region string `json:"region"`
-	// SubdomainPrefix - özel subdomain prefix (pro feature)
+	Region          string `json:"region"`
 	SubdomainPrefix string `json:"subdomain_prefix,omitempty"`
-	// TLSVerify - prod'da her zaman true olmalı
-	TLSVerify bool `json:"tls_verify"`
+	TLSVerify       bool   `json:"tls_verify"`
 }
 
-// UIConfig - terminal UI tercihleri
+// UIConfig controls terminal display — color defaults to true because life is too short for monochrome
 type UIConfig struct {
-	// Color - renkli output? Tabii ki evet. Bu soru bile komikti.
-	Color bool `json:"color"`
-	// Verbose - debug log'ları göster
+	Color   bool `json:"color"`
 	Verbose bool `json:"verbose"`
 }
 
-// DefaultConfig - fabrika ayarları gibi düşün
+// DefaultConfig returns sensible factory defaults
 func DefaultConfig() *Config {
 	return &Config{
 		Version: 1,
 		Tunnel: TunnelConfig{
 			Region:    "auto",
-			TLSVerify: true, // GÜVENLIK: production'da asla false yapma
+			TLSVerify: true, // SECURITY: never set to false in production
 		},
 		UI: UIConfig{
 			Color:   true,
@@ -66,43 +50,40 @@ func DefaultConfig() *Config {
 	}
 }
 
-// ConfigDir - tunr config klasörü nerede?
-// Her OS kendine göre mantıklı bir yere koyar.
+// ConfigDir returns the platform-appropriate config directory
 func ConfigDir() (string, error) {
 	var base string
 
 	switch runtime.GOOS {
 	case "darwin":
 		// macOS: ~/Library/Application Support/tunr
-		// (Homebrew ekosistemiyle uyumluluk için)
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", fmt.Errorf("home dir bulunamadı: %w", err)
+			return "", fmt.Errorf("could not determine home directory: %w", err)
 		}
 		base = filepath.Join(home, "Library", "Application Support", "tunr")
 	case "linux":
-		// Linux: XDG standartlarına uyalım
+		// XDG compliance — we're good citizens
 		if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
 			base = filepath.Join(xdg, "tunr")
 		} else {
 			home, err := os.UserHomeDir()
 			if err != nil {
-				return "", fmt.Errorf("home dir bulunamadı: %w", err)
-			}
-			base = filepath.Join(home, ".config", "tunr")
+			return "", fmt.Errorf("could not determine home directory: %w", err)
 		}
+		base = filepath.Join(home, ".config", "tunr")
+	}
 	case "windows":
-		// Windows: %APPDATA%\tunr
 		appData := os.Getenv("APPDATA")
 		if appData == "" {
-			return "", fmt.Errorf("APPDATA env var bulunamadı; Windows mu bu?")
+			return "", fmt.Errorf("APPDATA env var not found — is this really Windows?")
 		}
 		base = filepath.Join(appData, "tunr")
 	default:
-		// Diğer platformlar: ~/.tunr (basit ama işe yarar)
+		// Fallback: ~/.tunr — simple but it works
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", fmt.Errorf("home dir bulunamadı: %w", err)
+			return "", fmt.Errorf("could not determine home directory: %w", err)
 		}
 		base = filepath.Join(home, ".tunr")
 	}
@@ -110,7 +91,7 @@ func ConfigDir() (string, error) {
 	return base, nil
 }
 
-// configFilePath - config.json'ın tam yolu
+// configFilePath returns the full path to config.json
 func configFilePath() (string, error) {
 	dir, err := ConfigDir()
 	if err != nil {
@@ -119,56 +100,53 @@ func configFilePath() (string, error) {
 	return filepath.Join(dir, "config.json"), nil
 }
 
-// Load - config'i diskten yükle. Yoksa default ile başla.
+// Load reads config from disk, falling back to defaults if none exists
 func Load() (*Config, error) {
 	path, err := configFilePath()
 	if err != nil {
-		return DefaultConfig(), nil // config yoksa default kullan
+		return DefaultConfig(), nil
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// İlk kez çalışıyor, welcome!
+			// First run — welcome aboard!
 			return DefaultConfig(), nil
 		}
-		return nil, fmt.Errorf("config okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read config: %w", err)
 	}
 
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("config parse hatası (belki elle düzenlediniz?): %w", err)
+		return nil, fmt.Errorf("config parse error (hand-edited perhaps?): %w", err)
 	}
 
-	// Version migration buraya gelecek (Faz 1'de)
-	// Şimdilik naive olarak yükle
+	// TODO: version migration goes here
 
 	return &cfg, nil
 }
 
-// Save - config'i diske yaz.
-// GÜVENLİK: token/secret bu fonksiyona asla geçmemeli.
+// Save persists config to disk.
+// SECURITY: Tokens/secrets must never be passed through this function.
 func (c *Config) Save() error {
 	path, err := configFilePath()
 	if err != nil {
 		return err
 	}
 
-	// Klasörü oluştur (yoksa)
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0700); err != nil { // 0700 = sadece sahip okuyabilir
-		return fmt.Errorf("config klasörü oluşturulamadı: %w", err)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("could not create config directory: %w", err)
 	}
 
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
-		return fmt.Errorf("config serialize edilemedi: %w", err)
+		return fmt.Errorf("could not serialize config: %w", err)
 	}
 
-	// GÜVENLİK: config dosyası sadece sahibi tarafından okunabilir (0600)
-	// chmod 644 yapan PR'ı reddedin lütfen
+	// SECURITY: Owner-only read/write (0600). Reject any PR that weakens this.
 	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("config yazılamadı: %w", err)
+		return fmt.Errorf("could not write config: %w", err)
 	}
 
 	return nil

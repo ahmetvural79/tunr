@@ -14,7 +14,7 @@ import (
 	"github.com/tunr-dev/tunr/internal/proxy"
 )
 
-// TunnelStatus - tunnel'ın şu anki hali
+// TunnelStatus represents where a tunnel is in its lifecycle
 type TunnelStatus string
 
 const (
@@ -24,7 +24,7 @@ const (
 	StatusDisconnected TunnelStatus = "disconnected"
 )
 
-// Tunnel - tek bir aktif tunnel
+// Tunnel is a single active tunnel instance
 type Tunnel struct {
 	ID        string
 	LocalPort int
@@ -32,30 +32,28 @@ type Tunnel struct {
 	Status    TunnelStatus
 	StartedAt time.Time
 
-	// Thread-safe request sayacı
-	requestCount atomic.Int64
+	requestCount atomic.Int64 // atomic so we don't need a lock for reads
 
 	mu     sync.RWMutex
 	cancel context.CancelFunc
 
-	// Cloudflare process handle (cloudflared kullanıyorsak)
-	cfProcess *exec.Cmd
+	cfProcess *exec.Cmd // non-nil when using cloudflared
 }
 
-// RequestCount - kaç istek geldi?
+// RequestCount returns how many requests have flowed through this tunnel
 func (t *Tunnel) RequestCount() int64 {
 	return t.requestCount.Load()
 }
 
-// Manager - tüm tunnel'ları yöneten merkezi yapı
+// Manager owns all tunnels and orchestrates their lifecycle
 type Manager struct {
 	tunnels   map[string]*Tunnel
 	mu        sync.RWMutex
 	relayURL  string
-	authToken string // asla log'a geçmez
+	authToken string // SECURITY: never logged
 }
 
-// NewManager - tunnel manager oluştur
+// NewManager spins up a fresh tunnel manager pointed at the given relay
 func NewManager(relayURL string) *Manager {
 	return &Manager{
 		tunnels:  make(map[string]*Tunnel),
@@ -63,38 +61,33 @@ func NewManager(relayURL string) *Manager {
 	}
 }
 
-// SetAuthToken - auth token'ı set et
-// GÜVENLİK: Setter ayrı tutuldu ki accidental logging önlensin
+// SetAuthToken sets the bearer token for relay auth.
+// SECURITY: kept as a separate setter to prevent accidental logging during construction
 func (m *Manager) SetAuthToken(token string) {
 	m.authToken = token
 }
 
-// Start - tunnel başlat ve public URL dön
-// Hem Cloudflare hem de custom relay destekler
+// Start creates a tunnel and returns once the public URL is live.
+// Works with both Cloudflare quicktunnels and custom relays.
 func (m *Manager) Start(ctx context.Context, port int, opts StartOptions) (*Tunnel, error) {
-	// Port validasyonu - önce bunu yapalım
 	if err := validatePort(port); err != nil {
 		return nil, err
 	}
 
-	// Default port map: Her şey base porta
 	routes := map[string]int{"/": port}
-	// Path routing verilmişse ez
 	if len(opts.PathRoutes) > 0 {
 		routes = opts.PathRoutes
-		// Eğer kullanıcı "/" kök dizini girmemişse ama base port varsa ekle
+		// fall back to base port for root if the user didn't specify one
 		if _, ok := routes["/"]; !ok && port > 0 {
 			routes["/"] = port
 		}
 	}
 
-	// Local proxy hazırla (WebSocket + HTTP handler + Vibecoder Middleware'leri)
 	localProxy, err := proxy.NewLocalProxy(port, routes)
 	if err != nil {
-		return nil, fmt.Errorf("local proxy başlatılamadı: %w", err)
+		return nil, fmt.Errorf("failed to start local proxy: %w", err)
 	}
 
-	// Faz 8: Vibecoder Müşteri Demo Özelliklerini proxy'ye yükle
 	localProxy.DemoMode = opts.DemoMode
 	localProxy.InjectWidget = opts.InjectWidget
 	localProxy.AutoLogin = opts.AutoLogin
@@ -103,12 +96,10 @@ func (m *Manager) Start(ctx context.Context, port int, opts StartOptions) (*Tunn
 		localProxy.Freeze = proxy.NewFreezeCache(true)
 	}
 	
-	// Middleware zincirini (Demo -> Widget -> Freeze -> ReverseProxy) inşa et
 	localProxy.BuildMiddlewareChain()
 
-	// Bağlantı öncesi port kontrolü
 	if err := localProxy.HealthCheck(ctx); err != nil {
-		return nil, fmt.Errorf("port %d'e ulaşılamıyor. Önce uygulamanızı başlatın, sonra tunr çalıştırın", port)
+		return nil, fmt.Errorf("can't reach port %d — start your app first, then run tunr", port)
 	}
 
 	id := uuid.New().String()[:8]
@@ -126,20 +117,18 @@ func (m *Manager) Start(ctx context.Context, port int, opts StartOptions) (*Tunn
 	m.tunnels[id] = t
 	m.mu.Unlock()
 
-	// TTL (Auto-Expiring Tunnel) mantığı
 	if opts.TTL > 0 {
 		time.AfterFunc(opts.TTL, func() {
-			logger.Warn("⏳ Tunnel TTL doldu (%v). Kapatılıyor...", opts.TTL)
+			logger.Warn("⏳ Tunnel TTL expired (%v). Shutting down...", opts.TTL)
 			m.Remove(id)
 		})
-		logger.Info("⏳ Bu tunnel otomatik olarak kapanacak: %v", opts.TTL)
+		logger.Info("⏳ This tunnel will auto-expire in %v", opts.TTL)
 	}
 
-	// Arka planda tunnel kur
 	go func() {
 		if err := m.runTunnel(tunnelCtx, t, localProxy, opts); err != nil {
 			if err != context.Canceled {
-				logger.Error("Tunnel %s hatayla bitti: %v", id, err)
+				logger.Error("Tunnel %s failed: %v", id, err)
 			}
 			t.mu.Lock()
 			t.Status = StatusDisconnected
@@ -147,7 +136,7 @@ func (m *Manager) Start(ctx context.Context, port int, opts StartOptions) (*Tunn
 		}
 	}()
 
-	// URL hazır olana kadar bekle (max 15s)
+	// poll until the public URL is ready (max 15s)
 	deadline := time.NewTimer(15 * time.Second)
 	defer deadline.Stop()
 
@@ -159,7 +148,7 @@ func (m *Manager) Start(ctx context.Context, port int, opts StartOptions) (*Tunn
 		case <-deadline.C:
 			cancel()
 			m.Remove(id)
-			return nil, fmt.Errorf("tunnel 15 saniye içinde bağlanamadı. 'tunr doctor' çalıştırın")
+			return nil, fmt.Errorf("tunnel failed to connect within 15 seconds — try 'tunr doctor'")
 		case <-ctx.Done():
 			cancel()
 			m.Remove(id)
@@ -175,51 +164,47 @@ func (m *Manager) Start(ctx context.Context, port int, opts StartOptions) (*Tunn
 			}
 			if status == StatusError {
 				m.Remove(id)
-				return nil, fmt.Errorf("tunnel başlatılamadı")
+				return nil, fmt.Errorf("tunnel failed to start")
 			}
 		}
 	}
 }
 
-// runTunnel - gerçek tunnel bağlantı döngüsü
-// Retry ile birlikte çalışır, bağlantı kopunca yeniden kurar
+// runTunnel is the actual connection loop.
+// Wraps everything in WithRetry so dropped connections auto-reconnect.
 func (m *Manager) runTunnel(ctx context.Context, t *Tunnel, localProxy *proxy.LocalProxy, opts StartOptions) error {
-	// Local HTTP sunucusu başlat (relay bu adrese bağlanacak)
 	localServer := &http.Server{
-		Addr:         fmt.Sprintf("127.0.0.1:%d", t.LocalPort+10000), // offset ile çakışma önle
+		Addr:         fmt.Sprintf("127.0.0.1:%d", t.LocalPort+10000), // offset to avoid port collision
 		Handler:      localProxy,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
-	_ = localServer // Faz 1'de açılacak
+	_ = localServer // TODO: wire up in phase 1
 
-	// Cloudflare quicktunnel veya relay'e bağlan
 	relayClient := NewRelayClient(m.relayURL, m.authToken)
 
 	return WithRetry(ctx, DefaultRetryConfig, func(ctx context.Context, attempt int) error {
 		if attempt > 1 {
-			logger.Info("Yeniden bağlanılıyor... (deneme %d)", attempt)
+			logger.Info("Reconnecting... (attempt %d)", attempt)
 		}
 
-		// Relay'den tunnel URL iste
 		resp, err := relayClient.RequestTunnel(ctx, t.LocalPort, TunnelRequestOptions{
 			Subdomain: opts.Subdomain,
 			HTTPS:     opts.HTTPS,
 		})
 		if err != nil {
-			return fmt.Errorf("relay bağlantısı kurulamadı: %w", err)
+			return fmt.Errorf("failed to connect to relay: %w", err)
 		}
 
-		// URL hazır, güncelle
 		t.mu.Lock()
 		t.PublicURL = resp.PublicURL
 		t.Status = StatusActive
 		t.mu.Unlock()
 
-		logger.Info("Tunnel aktif: localhost:%d → %s", t.LocalPort, resp.PublicURL)
+		logger.Info("Tunnel active: localhost:%d → %s", t.LocalPort, resp.PublicURL)
 
-		// Şimdi tunnel'ı canlı tut (context iptal olana kadar)
+		// keep alive until context is cancelled
 		<-ctx.Done()
 
 		t.mu.Lock()
@@ -230,7 +215,7 @@ func (m *Manager) runTunnel(ctx context.Context, t *Tunnel, localProxy *proxy.Lo
 	})
 }
 
-// Remove - tunnel'ı durdur ve listeden sil
+// Remove stops a tunnel and evicts it from the map
 func (m *Manager) Remove(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -239,7 +224,6 @@ func (m *Manager) Remove(id string) {
 		if t.cancel != nil {
 			t.cancel()
 		}
-		// Cloudflare process varsa öldür
 		if t.cfProcess != nil && t.cfProcess.Process != nil {
 			_ = t.cfProcess.Process.Kill()
 		}
@@ -247,7 +231,7 @@ func (m *Manager) Remove(id string) {
 	}
 }
 
-// List - aktif tunnel listesi (thread-safe)
+// List returns all active tunnels (thread-safe snapshot)
 func (m *Manager) List() []*Tunnel {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -259,7 +243,7 @@ func (m *Manager) List() []*Tunnel {
 	return result
 }
 
-// StopAll - tüm tunnel'ları durdur
+// StopAll tears down every tunnel — the nuclear option
 func (m *Manager) StopAll() {
 	m.mu.Lock()
 	ids := make([]string, 0, len(m.tunnels))
@@ -271,39 +255,38 @@ func (m *Manager) StopAll() {
 	for _, id := range ids {
 		m.Remove(id)
 	}
-	logger.Info("Tüm tunnel'lar kapatıldı.")
+	logger.Info("All tunnels shut down.")
 }
 
-// StartOptions - tunnel başlatma parametreleri
+// StartOptions holds everything you can tweak when starting a tunnel
 type StartOptions struct {
 	Subdomain string
+	Domain    string
 	HTTPS     bool
-	AuthToken string `json:"-"` // JSON'a yazılmaz, log'a geçmez
+	AuthToken string `json:"-"`
 
-	// Faz 8: Vibecoder Özellikleri
-	DemoMode     bool   // GET/HEAD dışı istekleri durdur
-	Freeze       bool   // Sayfa kapanırsa cache'den son sürümü dön
-	InjectWidget bool   // </body> tag'ine Feedback+Error widget bas
-	AutoLogin    string // Otomatik geçici Auth cookie/header yükle
-	
-	// Advanced Features
-	Password   string         // Tünele özel Basic Auth şifresi (boşsa kapalı)
-	TTL        time.Duration  // Otomatik kapanma süresi (0 ise süresiz)
-	PathRoutes map[string]int // Çoklu port yönlendirme (örn: /api -> 3001)
+	DemoMode     bool
+	Freeze       bool
+	InjectWidget bool
+	AutoLogin    string
+
+	Password   string
+	TTL        time.Duration
+	PathRoutes map[string]int
 }
 
-// validatePort - port numarası mantıklı mı?
+// validatePort makes sure you're not asking for something silly
 func validatePort(port int) error {
 	if port < 1 || port > 65535 {
-		return fmt.Errorf("port %d geçersiz (1-65535 arası olmalı)", port)
+		return fmt.Errorf("port %d is invalid (must be 1-65535)", port)
 	}
 	if port < 1024 {
-		return fmt.Errorf("port %d için root yetkisi gerekir; 1024 ve üzeri bir port kullanın", port)
+		return fmt.Errorf("port %d requires root privileges — use 1024 or above", port)
 	}
 	return nil
 }
 
-// checkPortReachable - port açık mı? (HealthCheck ile aynı, backward compat için)
+// checkPortReachable is a legacy health check — kept around for backward compat
 func checkPortReachable(port int) error {
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(fmt.Sprintf("http://localhost:%d", port))

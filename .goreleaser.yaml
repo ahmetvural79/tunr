@@ -123,7 +123,7 @@ brews:
       name: homebrew-tap
     description: "Vibecoder'lar için local → public tunnel aracı"
     homepage: "https://tunr.sh"
-    license: "MIT"
+    license: "PolyForm-Shield-1.0.0"
     
     test: |
       system "#{bin}/tunr", "version"

@@ -1,67 +1,67 @@
-# tunr — Deployment & Test Rehberi
+# tunr — Deployment & Testing Guide
 
-> Hetzner Cloud üzerinde sıfırdan production kurulumu ve uçtan uca test kılavuzu.
+> Production setup from scratch on Hetzner Cloud and an end-to-end testing walkthrough.
 
 ---
 
-## İçindekiler
+## Table of Contents
 
-1. [Gereksinimler](#1-gereksinimler)
-2. [Hetzner Sunucu Kurulumu](#2-hetzner-sunucu-kurulumu)
-3. [Docker & Bağımlılıklar](#3-docker--bağımlılıklar)
-4. [PostgreSQL Kurulumu](#4-postgresql-kurulumu)
-5. [Relay Sunucu Deploy](#5-relay-sunucu-deploy)
+1. [Requirements](#1-requirements)
+2. [Hetzner Server Setup](#2-hetzner-server-setup)
+3. [Docker & Dependencies](#3-docker--dependencies)
+4. [PostgreSQL Setup](#4-postgresql-setup)
+5. [Relay Server Deploy](#5-relay-server-deploy)
 6. [Caddy (TLS + Reverse Proxy)](#6-caddy-tls--reverse-proxy)
-7. [DNS Yapılandırması](#7-dns-yapılandırması)
+7. [DNS Configuration](#7-dns-configuration)
 8. [Landing Page Deploy](#8-landing-page-deploy)
-9. [Ortam Değişkenleri](#9-ortam-değişkenleri)
-10. [Servis Yönetimi (systemd)](#10-servis-yönetimi-systemd)
-11. [Uçtan Uca Test Rehberi](#11-uçtan-uca-test-rehberi)
-12. [İzleme ve Log](#12-izleme-ve-log)
-13. [Yedekleme](#13-yedekleme)
-14. [Sık Karşılaşılan Sorunlar](#14-sık-karşılaşılan-sorunlar)
+9. [Environment Variables](#9-environment-variables)
+10. [Service Management (systemd)](#10-service-management-systemd)
+11. [End-to-End Testing Guide](#11-end-to-end-testing-guide)
+12. [Monitoring and Logs](#12-monitoring-and-logs)
+13. [Backups](#13-backups)
+14. [Troubleshooting](#14-troubleshooting)
 
 ---
 
-## 1. Gereksinimler
+## 1. Requirements
 
-| Bileşen | Versiyon | Amaç |
-|---------|----------|------|
-| Hetzner Cloud | CPX21 (3 vCPU, 4GB RAM) | Relay sunucu |
-| Ubuntu | 24.04 LTS | İşletim sistemi |
-| Go | 1.22+ | Relay binary derleme |
+| Component | Version | Purpose |
+|-----------|---------|---------|
+| Hetzner Cloud | CPX21 (3 vCPU, 4GB RAM) | Relay server |
+| Ubuntu | 24.04 LTS | Operating system |
+| Go | 1.22+ | Compile relay binary |
 | Docker / Docker Compose | 25+ | PostgreSQL container |
 | Caddy | 2.7+ | TLS + reverse proxy |
 | Cloudflare | Free plan | DNS + wildcard TLS |
 
-**Maliyet tahmini:** ~€0.037/saat → ~€12/ay (CPX21)
+**Estimated cost:** ~€0.037/hour → ~€12/month (CPX21)
 
 ---
 
-## 2. Hetzner Sunucu Kurulumu
+## 2. Hetzner Server Setup
 
-### 2.1 Sunucu Oluştur
+### 2.1 Create a Server
 
 [Hetzner Cloud Console](https://console.hetzner.cloud/) → New Server
 
-| Ayar | Değer |
-|------|-------|
-| Location | Nuremberg (nbg1) veya Helsinki (hel1) |
+| Setting | Value |
+|---------|-------|
+| Location | Nuremberg (nbg1) or Helsinki (hel1) |
 | Image | Ubuntu 24.04 |
 | Type | CPX21 (3 vCPU, 4GB) |
 | Networking | Enable IPv4 + IPv6 |
-| SSH Key | Public key'inizi ekleyin |
+| SSH Key | Add your public key |
 
-### 2.2 İlk Bağlantı ve Güvenlik
+### 2.2 Initial Connection and Security
 
 ```bash
-# Bağlan
-ssh root@<SUNUCU_IP>
+# Connect
+ssh root@<SERVER_IP>
 
-# Güncelle
+# Update
 apt update && apt upgrade -y
 
-# Firewall — sadece gerekli portları aç
+# Firewall — only open required ports
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow 22/tcp   # SSH
@@ -69,24 +69,24 @@ ufw allow 80/tcp   # HTTP (Let's Encrypt redirect)
 ufw allow 443/tcp  # HTTPS
 ufw enable
 
-# fail2ban (brute force koruması)
+# fail2ban (brute force protection)
 apt install -y fail2ban
 systemctl enable --now fail2ban
 
-# Unattended upgrades (güvenlik yamaları otomatik)
+# Unattended upgrades (automatic security patches)
 apt install -y unattended-upgrades
 dpkg-reconfigure -plow unattended-upgrades
 
-# root SSH girişini kapat (SSH key ile giriş zaten güvenli)
+# Disable root SSH login (SSH key login is already secure)
 sed -i 's/#PermitRootLogin yes/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
 systemctl restart sshd
 
-# tunr kullanıcısı oluştur
+# Create tunr user
 useradd -m -s /bin/bash tunr
 usermod -aG docker tunr
 ```
 
-### 2.3 Hostname Ayarla
+### 2.3 Set Hostname
 
 ```bash
 hostnamectl set-hostname tunr-relay
@@ -95,14 +95,14 @@ echo "127.0.0.1 tunr-relay" >> /etc/hosts
 
 ---
 
-## 3. Docker & Bağımlılıklar
+## 3. Docker & Dependencies
 
 ```bash
-# Docker kur
+# Install Docker
 curl -fsSL https://get.docker.com | sh
 systemctl enable --now docker
 
-# Go kur (relay binary derlemek için)
+# Install Go (for compiling the relay binary)
 wget https://go.dev/dl/go1.22.0.linux-amd64.tar.gz
 rm -rf /usr/local/go
 tar -C /usr/local -xzf go1.22.0.linux-amd64.tar.gz
@@ -110,7 +110,7 @@ echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile.d/go.sh
 source /etc/profile.d/go.sh
 go version
 
-# Caddy kur
+# Install Caddy
 apt install -y debian-keyring debian-archive-keyring apt-transport-https
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
   | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
@@ -121,9 +121,9 @@ apt update && apt install -y caddy
 
 ---
 
-## 4. PostgreSQL Kurulumu
+## 4. PostgreSQL Setup
 
-### 4.1 Docker Compose ile Başlat
+### 4.1 Start with Docker Compose
 
 ```bash
 mkdir -p /opt/tunr && cd /opt/tunr
@@ -139,12 +139,12 @@ services:
     environment:
       POSTGRES_DB: tunr
       POSTGRES_USER: tunr
-      POSTGRES_PASSWORD: ${DB_PASSWORD}  # .env'den gelir
+      POSTGRES_PASSWORD: ${DB_PASSWORD}  # Loaded from .env
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./relay/migrations:/docker-entrypoint-initdb.d:ro
     ports:
-      - "127.0.0.1:5432:5432"   # Sadece localhost — dışarıya açılmaz
+      - "127.0.0.1:5432:5432"   # Localhost only — not exposed externally
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tunr"]
       interval: 10s
@@ -156,10 +156,10 @@ volumes:
 EOF
 ```
 
-### 4.2 .env Dosyası Oluştur
+### 4.2 Create .env File
 
 ```bash
-# GÜVENLİK: .env git'e commit edilmez!
+# SECURITY: .env is never committed to git!
 cat > /opt/tunr/.env << EOF
 DB_PASSWORD=$(openssl rand -base64 32)
 TUNR_JWT_SECRET=$(openssl rand -hex 32)
@@ -172,59 +172,59 @@ chmod 600 /opt/tunr/.env
 ```
 
 > [!CAUTION]
-> `.env` dosyasını asla git'e commit etmeyin, asla başkasıyla paylaşmayın.
+> Never commit the `.env` file to git and never share it with anyone.
 
-### 4.3 PostgreSQL Başlat
+### 4.3 Start PostgreSQL
 
 ```bash
 cd /opt/tunr
 docker compose up -d postgres
 
-# Migration'ın çalıştığını doğrula
+# Verify that migrations have run
 docker compose exec postgres psql -U tunr -d tunr -c "\dt"
-# users, tunnels, sessions, magic_tokens, audit_log, plan_limits tablolarını görmeli
+# Should show users, tunnels, sessions, magic_tokens, audit_log, plan_limits tables
 ```
 
 ---
 
-## 5. Relay Sunucu Deploy
+## 5. Relay Server Deploy
 
-### 5.1 Kaynak Kodu Kopyala
+### 5.1 Copy Source Code
 
 ```bash
-# Geliştirme makinenizde (projo dizininde):
+# From your development machine (in the project directory):
 rsync -avz --exclude='.git' --exclude='vendor' \
-  tunr/ root@<SUNUCU_IP>:/opt/tunr/src/
+  tunr/ root@<SERVER_IP>:/opt/tunr/src/
 
-# Veya git ile:
-# ssh root@<SUNUCU_IP>
+# Or via git:
+# ssh root@<SERVER_IP>
 # git clone https://github.com/yourusername/tunr /opt/tunr/src
 ```
 
-### 5.2 Relay Binary Derle
+### 5.2 Compile the Relay Binary
 
 ```bash
 cd /opt/tunr/src/relay
 
-# Production binary — debug bilgisi yok, küçük boyut
+# Production binary — no debug info, small size
 CGO_ENABLED=0 go build \
   -trimpath \
   -ldflags="-w -s -X main.Version=$(git describe --tags --always)" \
   -o /usr/local/bin/tunr-relay \
   ./cmd/server
 
-# İzinleri ayarla
+# Set permissions
 chmod 755 /usr/local/bin/tunr-relay
 
-# Test et
+# Test it
 TUNR_JWT_SECRET="test-secret-32-chars-minimum-len" \
-  tunr-relay --help 2>&1 || echo "Binary çalışıyor"
+  tunr-relay --help 2>&1 || echo "Binary is working"
 ```
 
-### 5.3 CLI Binary Derle ve Dağıt
+### 5.3 Compile and Distribute CLI Binary
 
 ```bash
-# tunr CLI binary'si (kullanıcılara dağıtılır)
+# tunr CLI binary (distributed to users)
 cd /opt/tunr/src
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
   -trimpath \
@@ -249,40 +249,40 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
 
 ## 6. Caddy (TLS + Reverse Proxy)
 
-### 6.1 Cloudflare API Token Oluştur
+### 6.1 Create a Cloudflare API Token
 
 [Cloudflare Dashboard](https://dash.cloudflare.com/) → Profile → API Tokens → Create Token
 
-Gerekli izinler:
-- `Zone:DNS:Edit` — tunr.sh zone için
+Required permissions:
+- `Zone:DNS:Edit` — for the tunr.sh zone
 - `Zone:Zone:Read`
 
-### 6.2 Caddy xcaddy ile Cloudflare DNS Plugin Derle
+### 6.2 Build Caddy with Cloudflare DNS Plugin via xcaddy
 
 ```bash
-# xcaddy kur
+# Install xcaddy
 go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
 
-# Cloudflare DNS plugin ile Caddy derle
+# Build Caddy with Cloudflare DNS plugin
 xcaddy build \
   --with github.com/caddy-dns/cloudflare \
   --output /usr/local/bin/caddy
 
-# Caddy'ye capability ver (80/443 portları için root gerekmez)
+# Grant capability to Caddy (no root required for ports 80/443)
 setcap cap_net_bind_service=+ep /usr/local/bin/caddy
 ```
 
-### 6.3 Caddyfile Yapılandır
+### 6.3 Configure Caddyfile
 
 ```bash
 mkdir -p /etc/caddy
 cp /opt/tunr/src/relay/caddy/Caddyfile /etc/caddy/Caddyfile
 
-# Cloudflare token'ı güncelle
+# Update Cloudflare token
 sed -i "s/CLOUDFLARE_API_TOKEN/$CLOUDFLARE_API_TOKEN/" /etc/caddy/Caddyfile
 ```
 
-### 6.4 Caddy Servis
+### 6.4 Caddy Service
 
 ```bash
 # /etc/systemd/system/caddy.service
@@ -311,21 +311,21 @@ systemctl enable --now caddy
 
 ---
 
-## 7. DNS Yapılandırması
+## 7. DNS Configuration
 
 [Cloudflare Dashboard](https://dash.cloudflare.com/) → tunr.sh → DNS
 
-| Tür | Name | Content | Proxy |
-|-----|------|---------|-------|
-| A | `@` | `<SUNUCU_IP>` | ☁️ Proxied |
-| A | `www` | `<SUNUCU_IP>` | ☁️ Proxied |
-| A | `*` | `<SUNUCU_IP>` | ☁️ Proxied |
-| A | `relay` | `<SUNUCU_IP>` | 🟠 DNS only |
+| Type | Name | Content | Proxy |
+|------|------|---------|-------|
+| A | `@` | `<SERVER_IP>` | ☁️ Proxied |
+| A | `www` | `<SERVER_IP>` | ☁️ Proxied |
+| A | `*` | `<SERVER_IP>` | ☁️ Proxied |
+| A | `relay` | `<SERVER_IP>` | 🟠 DNS only |
 
 > [!IMPORTANT]
-> `*` wildcard kaydı her tunnel'ın subdomain'ini (abc123.tunr.sh) doğru IP'ye yönlendirir.
+> The `*` wildcard record routes each tunnel's subdomain (abc123.tunr.sh) to the correct IP address.
 
-**Cloudflare SSL/TLS Modu:** Full (Strict) — Caddy ve Cloudflare arası gerçek TLS.
+**Cloudflare SSL/TLS Mode:** Full (Strict) — real TLS between Caddy and Cloudflare.
 
 ---
 
@@ -335,36 +335,36 @@ systemctl enable --now caddy
 mkdir -p /var/www/tunr
 cp -r /opt/tunr/src/landing/* /var/www/tunr/
 
-# İzinleri ayarla
+# Set permissions
 chown -R caddy:caddy /var/www/tunr
 chmod -R 755 /var/www/tunr
 ```
 
 ---
 
-## 9. Ortam Değişkenleri
+## 9. Environment Variables
 
 ```bash
-# /opt/tunr/.env — tam liste
+# /opt/tunr/.env — full list
 
-# ─── Zorunlu ───────────────────────────────
+# ─── Required ─────────────────────────────
 TUNR_DOMAIN=tunr.sh
-TUNR_JWT_SECRET=<en-az-32-karakter-random-string>
+TUNR_JWT_SECRET=<at-least-32-character-random-string>
 DATABASE_URL=postgres://tunr:<DB_PASSWORD>@localhost:5432/tunr?sslmode=disable
 
-# ─── Opsiyonel ─────────────────────────────
+# ─── Optional ─────────────────────────────
 PORT=8080
 TUNR_LOG_LEVEL=info        # debug | info | warn
 
-# ─── Paddle (billing) ──────────────────────
+# ─── Paddle (billing) ────────────────────
 PADDLE_API_KEY=<paddle-api-key>
 PADDLE_WEBHOOK_SECRET=<paddle-webhook-secret>
 PADDLE_SANDBOX=false
 
-# ─── Cloudflare (TLS) ──────────────────────
+# ─── Cloudflare (TLS) ────────────────────
 CLOUDFLARE_API_TOKEN=<cf-api-token>
 
-# ─── Email (magic link) ────────────────────
+# ─── Email (magic link) ──────────────────
 SMTP_HOST=smtp.resend.com
 SMTP_PORT=587
 SMTP_USER=resend
@@ -374,7 +374,7 @@ SMTP_FROM=noreply@tunr.sh
 
 ---
 
-## 10. Servis Yönetimi (systemd)
+## 10. Service Management (systemd)
 
 ```bash
 # /etc/systemd/system/tunr-relay.service
@@ -392,14 +392,14 @@ ExecStart=/usr/local/bin/tunr-relay
 Restart=always
 RestartSec=5s
 
-# GÜVENLİK: Process izolasyonu
+# SECURITY: Process isolation
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/log/tunr
 PrivateTmp=true
 
-# Log
+# Logging
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=tunr-relay
@@ -414,34 +414,34 @@ chown tunr:tunr /var/log/tunr
 systemctl daemon-reload
 systemctl enable --now tunr-relay
 
-# Kontrol
+# Verify
 systemctl status tunr-relay
 journalctl -u tunr-relay -f
 ```
 
 ---
 
-## 11. Uçtan Uca Test Rehberi
+## 11. End-to-End Testing Guide
 
-### 11.1 Unit Testler (Local)
+### 11.1 Unit Tests (Local)
 
 ```bash
-# Tüm testler (race detector ile)
+# All tests (with race detector)
 cd tunr
 go test -race -timeout 60s ./internal/... ./cmd/...
 
-# Relay testleri
+# Relay tests
 cd relay
 go test -race -timeout 30s ./internal/...
 
-# Spesifik paket
+# Specific package
 go test -v -run TestJWTAlgNone ./relay/internal/auth/...
 
 # Benchmark
 go test -bench=. -benchmem ./internal/inspector/...
 ```
 
-**Beklenen çıktı:**
+**Expected output:**
 ```
 ok  github.com/tunr-dev/tunr/internal/billing   ✓
 ok  github.com/tunr-dev/tunr/internal/inspector  ✓
@@ -454,20 +454,20 @@ ok  github.com/tunr-dev/tunr/relay/internal/relay ✓
 ### 11.2 CLI Smoke Test
 
 ```bash
-# Binary derle
+# Build the binary
 go build -o tunr ./cmd/tunr
 
-# Versiyon kontrolü
+# Version check
 ./tunr version
 
-# Sistem tanısı
+# System diagnostics
 ./tunr doctor
 
-# Config başlat
+# Initialize config
 ./tunr config init
 cat .tunr.json
 
-# Yardım
+# Help
 ./tunr --help
 ./tunr share --help
 ./tunr mcp --help
@@ -476,10 +476,10 @@ cat .tunr.json
 ### 11.3 Relay Server End-to-End Test
 
 ```bash
-# Terminal 1 — Test HTTP sunucusu başlat
+# Terminal 1 — Start a test HTTP server
 python3 -m http.server 9999
 
-# Terminal 2 — Relay server başlat (local)
+# Terminal 2 — Start the relay server (local)
 cd relay
 TUNR_JWT_SECRET="test-secret-minimum-32-chars!!" \
   DATABASE_URL="" \
@@ -488,14 +488,14 @@ TUNR_JWT_SECRET="test-secret-minimum-32-chars!!" \
   go run ./cmd/server &
 RELAY_PID=$!
 
-# Terminal 3 — tunr CLI tunnel aç
-# (relay'i localhost:8080'e point et)
+# Terminal 3 — Open a tunr CLI tunnel
+# (point to relay at localhost:8080)
 TUNR_RELAY_URL="ws://localhost:8080/tunnel/connect" \
   ./tunr share --port 9999
 
-# Başka terminal — tunnel test et
+# Another terminal — Test the tunnel
 curl http://localhost:19842/api/v1/health    # Inspector API
-curl http://localhost:19842/api/v1/requests  # Yakalanmış istekler
+curl http://localhost:19842/api/v1/requests  # Captured requests
 
 kill $RELAY_PID
 ```
@@ -503,41 +503,41 @@ kill $RELAY_PID
 ### 11.4 WebSocket Tunnel Test
 
 ```bash
-# wscat ile WebSocket bağlantısını doğrula
+# Verify WebSocket connection with wscat
 npm install -g wscat
 
-# Relay'e bağlan (test)
+# Connect to the relay (test)
 wscat -c "ws://localhost:8080/tunnel/connect" \
   --header "Authorization: Bearer test"
 
-# Hello mesajı gönder
+# Send a hello message
 {"type":"hello","data":{"token":"","local_port":3000,"version":"test"}}
 
-# Beklenen yanıt:
+# Expected response:
 # {"type":"welcome","data":{"tunnel_id":"abc12345","subdomain":"xyzabc12","public_url":"http://xyzabc12.localhost:8080"}}
 ```
 
-### 11.5 Güvenlik Testleri
+### 11.5 Security Tests
 
 ```bash
-# 1. JWT alg:none saldırısı testi
+# 1. JWT alg:none attack test
 go test -v -run TestJWTAlgNone ./relay/internal/auth/...
 
-# 2. Webhook replay attack testi
+# 2. Webhook replay attack test
 go test -v -run TestWebhookReplayAttack ./internal/billing/...
 
-# 3. Header sanitizasyonu testi
+# 3. Header sanitization test
 go test -v -run TestSensitiveHeaderRedaction ./internal/inspector/...
 
-# 4. Race condition testi
+# 4. Race condition test
 go test -race -v -run TestRegistryConcurrency ./relay/internal/relay/...
 
-# 5. SSRF koruması (private IP'lere erişim engelleniyor mu?)
-# Relay'in private IP'lere forward etmediğini doğrula
+# 5. SSRF protection (are requests to private IPs blocked?)
+# Verify the relay does not forward to private IPs
 curl -H "Host: 127.0.0.1.tunr.sh" http://localhost:8080/
-# Beklenen: 404 "tunnel bulunamadı" (private IP olduğu için)
+# Expected: 404 "tunnel not found" (because it is a private IP)
 
-# 6. govulncheck (bilinen CVE'ler)
+# 6. govulncheck (known CVEs)
 go install golang.org/x/vuln/cmd/govulncheck@latest
 govulncheck ./...
 
@@ -545,55 +545,55 @@ govulncheck ./...
 golangci-lint run ./...
 ```
 
-### 11.6 Production Sağlık Kontrolleri
+### 11.6 Production Health Checks
 
 ```bash
 # Relay health check
 curl https://tunr.sh/api/v1/health
 # {"status":"ok","timestamp":1709855000}
 
-# Aktif tunnel sayısı
+# Active tunnel count
 curl https://tunr.sh/api/v1/status
 # {"active_tunnels":42}
 
-# TLS Sertifika kontrolü
+# TLS certificate check
 curl -vI https://tunr.sh 2>&1 | grep -E "SSL|subject|expire"
 
 # Wildcard TLS
 curl -vI https://test.tunr.sh 2>&1 | grep -E "SSL|CN="
 
-# PostgreSQL bağlantısı
+# PostgreSQL connection
 docker compose exec postgres psql -U tunr -d tunr \
   -c "SELECT COUNT(*) FROM users;"
 ```
 
-### 11.7 Yük Testi
+### 11.7 Load Testing
 
 ```bash
-# hey ile basit yük testi
+# Simple load test with hey
 go install github.com/rakyll/hey@latest
 
-# 100 eşzamanlı, 1000 istek
+# 100 concurrent connections, 1000 requests
 hey -n 1000 -c 100 https://tunr.sh/api/v1/health
 
-# Sonuç beklentisi:
+# Expected results:
 # Requests/sec: >500
 # P99 latency: <100ms
 # Error rate: 0%
 ```
 
-### 11.8 CLI Integration Test (tam akış)
+### 11.8 CLI Integration Test (full flow)
 
 ```bash
 #!/bin/bash
-# test_e2e.sh — uçtan uca entegrasyon testi
+# test_e2e.sh — end-to-end integration test
 
 set -euo pipefail
 
 PORT=18888
-echo "🧪 tunr E2E testi başlıyor..."
+echo "🧪 Starting tunr E2E test..."
 
-# Test HTTP sunucusu
+# Test HTTP server
 python3 -c "
 import http.server, threading
 class H(http.server.BaseHTTPRequestHandler):
@@ -608,7 +608,7 @@ s.serve_forever()
 " &
 HTTP_PID=$!
 
-# tunr tunnel aç
+# Open tunr tunnel
 TUNNEL_OUT=$(./tunr share --port $PORT --json 2>&1 | head -20)
 TUNNEL_URL=$(echo "$TUNNEL_OUT" | python3 -c "
 import sys, json
@@ -620,19 +620,19 @@ for line in sys.stdin:
 ")
 
 if [ -z "$TUNNEL_URL" ]; then
-  echo "❌ Tunnel URL alınamadı"
+  echo "❌ Failed to obtain tunnel URL"
   kill $HTTP_PID
   exit 1
 fi
 
-echo "✅ Tunnel açıldı: $TUNNEL_URL"
+echo "✅ Tunnel is open: $TUNNEL_URL"
 
-# Tunnel üzerinden HTTP test
+# HTTP test through the tunnel
 RESP=$(curl -sf "$TUNNEL_URL" 2>&1 || echo "FAIL")
 if [[ "$RESP" == *"tunr test OK"* ]]; then
-  echo "✅ HTTP tunnel çalışıyor"
+  echo "✅ HTTP tunnel is working"
 else
-  echo "❌ HTTP tunnel başarısız: $RESP"
+  echo "❌ HTTP tunnel failed: $RESP"
   kill $HTTP_PID
   exit 1
 fi
@@ -642,39 +642,39 @@ REQS=$(curl -sf http://localhost:19842/api/v1/requests 2>/dev/null)
 echo "✅ Inspector: $REQS"
 
 kill $HTTP_PID
-echo "🎉 Tüm testler BAŞARILI!"
+echo "🎉 All tests PASSED!"
 ```
 
 ---
 
-## 12. İzleme ve Log
+## 12. Monitoring and Logs
 
-### Logları İzle
+### View Logs
 
 ```bash
-# Relay log
+# Relay logs
 journalctl -u tunr-relay -f
 
-# Caddy log
+# Caddy logs
 journalctl -u caddy -f
 
-# PostgreSQL log
+# PostgreSQL logs
 docker compose logs -f postgres
 
-# Tüm servis durumları
+# All service statuses
 systemctl status tunr-relay caddy docker
 ```
 
-### Prometheus Metrikleri (Faz 7+)
+### Prometheus Metrics (Phase 7+)
 
 ```bash
-# Relay metrikleri (planlanan endpoint)
+# Relay metrics (planned endpoint)
 curl http://localhost:9090/metrics
 ```
 
 ---
 
-## 13. Yedekleme
+## 13. Backups
 
 ```bash
 # /opt/tunr/backup.sh
@@ -688,96 +688,96 @@ mkdir -p "$BACKUP_DIR"
 docker compose exec -T postgres \
   pg_dump -U tunr tunr | gzip > "$BACKUP_DIR/tunr_db.sql.gz"
 
-# Config yedek
+# Config backup
 cp /opt/tunr/.env "$BACKUP_DIR/.env.bak"
 
-# 30 günden eski yedekleri sil
+# Delete backups older than 30 days
 find /opt/tunr/backups -mindepth 1 -maxdepth 1 -mtime +30 -exec rm -rf {} \;
 
-echo "✅ Yedekleme tamamlandı: $BACKUP_DIR"
+echo "✅ Backup completed: $BACKUP_DIR"
 ```
 
 ```bash
-# Cron: her gece 02:00
+# Cron: every night at 02:00
 crontab -e
 # 0 2 * * * /opt/tunr/backup.sh >> /var/log/tunr/backup.log 2>&1
 ```
 
 ---
 
-## 14. Sık Karşılaşılan Sorunlar
+## 14. Troubleshooting
 
-### Tunnel bağlanamıyor
+### Tunnel cannot connect
 
 ```bash
-# 1. Relay çalışıyor mu?
+# 1. Is the relay running?
 systemctl status tunr-relay
 curl http://localhost:8080/api/v1/health
 
 # 2. Firewall
 ufw status verbose
-# 443 ve 80 açık olmalı
+# Ports 443 and 80 must be open
 
-# 3. DNS çözümlenmiş mi?
+# 3. Is DNS resolving?
 dig abc123.tunr.sh
-# <SUNUCU_IP> görünmeli
+# Should show <SERVER_IP>
 
-# 4. TLS sertifikası
+# 4. TLS certificate
 curl -vI https://tunr.sh 2>&1 | grep "SSL"
 ```
 
-### PostgreSQL bağlantısı kesildi
+### PostgreSQL connection lost
 
 ```bash
 docker compose restart postgres
-# Relay otomatik yeniden bağlanır (connection pool)
+# The relay will automatically reconnect (connection pool)
 ```
 
 ### Let's Encrypt rate limit
 
 ```bash
-# Her domain için haftada 5 sertifika limiti var
-# Test için staging CA kullan:
+# There is a limit of 5 certificates per domain per week
+# Use the staging CA for testing:
 # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
 ```
 
-### Yüksek bellek kullanımı
+### High memory usage
 
 ```bash
-# Aktif tunnel sayısını kontrol et
+# Check the active tunnel count
 curl http://localhost:8080/api/v1/status
 
-# Go GC zorla
+# Force Go GC
 kill -SIGUSR1 $(pidof tunr-relay)
 ```
 
-### tunr doctor hata veriyor
+### tunr doctor reports errors
 
 ```bash
 tunr doctor
-# Her satırı tek tek kontrol et
-# ✗ Daemon: systemctl start tunr veya ./tunr start
+# Check each line individually
+# ✗ Daemon: systemctl start tunr or ./tunr start
 # ✗ Login: tunr login
-# ✗ Relay: Relay henüz deploy edilmedi
+# ✗ Relay: Relay has not been deployed yet
 ```
 
 ---
 
-## Güncelleme
+## Updating
 
 ```bash
-# 1. Yeni binary derle
+# 1. Build a new binary
 cd /opt/tunr/src
 git pull
 cd relay
 CGO_ENABLED=0 go build -trimpath -ldflags="-w -s" \
   -o /usr/local/bin/tunr-relay-new ./cmd/server
 
-# 2. Sıfır kesinti ile yeniden başlat
+# 2. Zero-downtime restart
 mv /usr/local/bin/tunr-relay-new /usr/local/bin/tunr-relay
 systemctl reload tunr-relay || systemctl restart tunr-relay
 
-# 3. Yeni migration'ları uygula
+# 3. Apply new migrations
 docker compose exec postgres \
   psql -U tunr -d tunr -f /docker-entrypoint-initdb.d/002_update.sql
 ```

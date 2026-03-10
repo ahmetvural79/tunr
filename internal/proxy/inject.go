@@ -9,8 +9,8 @@ import (
 	"strings"
 )
 
-// InjectionScript — Feedback widget ve Remote JS Error Catcher scripti.
-// </body> kapanışından hemen önce enjekte edilir.
+// InjectionScript is the feedback widget + remote JS error catcher.
+// Gets injected right before </body> in HTML responses.
 const InjectionScript = `
 <!-- tunr Vibecoder Feedback Widget & Error Catcher -->
 <style>
@@ -43,12 +43,12 @@ const InjectionScript = `
 
 <div id="tunr-feedback-modal">
   <div id="tunr-feedback-content">
-	<h3 style="margin:0 0 8px 0; color:#111827">Geri Bildirim</h3>
-	<p style="margin:0; color:#6b7280; font-size:14px">Bu sayfada nereyi düzeltelim?</p>
-	<textarea id="tunr-feedback-text" placeholder="Örn: Buton rengi mavi olmalı..."></textarea>
+	<h3 style="margin:0 0 8px 0; color:#111827">Feedback</h3>
+	<p style="margin:0; color:#6b7280; font-size:14px">What should we fix on this page?</p>
+	<textarea id="tunr-feedback-text" placeholder="e.g. The button color should be blue..."></textarea>
 	<div id="tunr-feedback-actions">
-	  <button class="tunr-btn-cancel" onclick="document.getElementById('tunr-feedback-modal').style.display='none'">İptal</button>
-	  <button class="tunr-btn-submit" onclick="tunrSubmitFeedback()">Gönder</button>
+	  <button class="tunr-btn-cancel" onclick="document.getElementById('tunr-feedback-modal').style.display='none'">Cancel</button>
+	  <button class="tunr-btn-submit" onclick="tunrSubmitFeedback()">Send</button>
 	</div>
   </div>
 </div>
@@ -61,7 +61,7 @@ function tunrSubmitFeedback() {
 	if (!text.trim()) return;
 	
 	const btn = document.querySelector('.tunr-btn-submit');
-	btn.innerText = 'Gönderiliyor...';
+	btn.innerText = 'Sending...';
 	
 	fetch('/__tunr/feedback', {
 		method: 'POST',
@@ -75,15 +75,15 @@ function tunrSubmitFeedback() {
 	}).then(() => {
 		document.getElementById('tunr-feedback-text').value = '';
 		document.getElementById('tunr-feedback-modal').style.display = 'none';
-		btn.innerText = 'Gönder';
-		alert('Geri bildiriminiz Vibecoder\'a (geliştiriciye) ulaştı! ✅');
+		btn.innerText = 'Send';
+		alert('Your feedback has been sent to the developer! ✅');
 	}).catch(e => {
-		btn.innerText = 'Gönder';
-		alert('Gönderilemedi: ' + e.message);
+		btn.innerText = 'Send';
+		alert('Failed to send: ' + e.message);
 	});
 }
 
-// Remote JS Error Catcher (Vibecoder özelliği)
+// Remote JS Error Catcher
 window.addEventListener('error', function(event) {
 	fetch('/__tunr/error', {
 		method: 'POST',
@@ -114,7 +114,7 @@ window.addEventListener('unhandledrejection', function(event) {
 <!-- End tunr Widget -->
 `
 
-// injectMiddlewareResponseWriter — HTTP yanıtını yakalayıp HTML'e script enjekte eden wrapper
+// injectMiddlewareResponseWriter captures the response body so we can slip our script into HTML.
 type injectMiddlewareResponseWriter struct {
 	http.ResponseWriter
 	bodyBuf    *bytes.Buffer
@@ -136,7 +136,7 @@ func (w *injectMiddlewareResponseWriter) WriteHeader(statusCode int) {
 	encoding := w.ResponseWriter.Header().Get("Content-Encoding")
 	w.gzipped = strings.Contains(encoding, "gzip")
 
-	// Eğer HTML ise, modify edeceğimiz için Content-Length hatalı olur, kaldır
+	// Drop Content-Length for HTML — we're about to change the size
 	if w.isHTML {
 		w.ResponseWriter.Header().Del("Content-Length")
 	}
@@ -149,12 +149,12 @@ func (w *injectMiddlewareResponseWriter) Write(b []byte) (int, error) {
 		w.WriteHeader(http.StatusOK)
 	}
 
-	// Sadece HTML yanıtlarını belleğe alıyoruz (modify etmek için)
+	// Buffer HTML responses in memory so we can inject into them
 	if w.isHTML {
 		return w.bodyBuf.Write(b)
 	}
 
-	// HTML değilse doğrudan yaz (resim, css, js akışı bozulmasın)
+	// Non-HTML (images, css, js) goes straight through
 	if w.statusCode > 0 {
 		w.ResponseWriter.WriteHeader(w.statusCode)
 		w.statusCode = 0
@@ -167,7 +167,7 @@ func (w *injectMiddlewareResponseWriter) flush() {
 		return
 	}
 
-	// 1. Gzip decode (eğer sıkıştırılmışsa)
+	// 1. Decompress if gzipped
 	var body []byte
 	if w.gzipped {
 		gz, err := gzip.NewReader(bytes.NewReader(w.bodyBuf.Bytes()))
@@ -188,19 +188,19 @@ func (w *injectMiddlewareResponseWriter) flush() {
 		body = w.bodyBuf.Bytes()
 	}
 
-	// 2. Enjeksiyon yap (</body> kapanışından hemen önce)
+	// 2. Inject right before </body>
 	bodyStr := string(body)
 	idx := strings.LastIndex(strings.ToLower(bodyStr), "</body>")
 	if idx != -1 {
 		bodyStr = bodyStr[:idx] + InjectionScript + bodyStr[idx:]
 	} else {
-		// </body> bulamazsa sonuna ekle
+		// No </body> found — append at the end and hope for the best
 		bodyStr += InjectionScript
 	}
 
 	modifiedBody := []byte(bodyStr)
 
-	// 3. Tekrar Gzip encode (eğer orijinali öyleyse)
+	// 3. Re-compress if the original was gzipped
 	var finalBody []byte
 	if w.gzipped {
 		var buf bytes.Buffer
@@ -212,7 +212,7 @@ func (w *injectMiddlewareResponseWriter) flush() {
 		finalBody = modifiedBody
 	}
 
-	// 4. İstemciye gönder
+	// 4. Ship it
 	w.ResponseWriter.Header().Set("Content-Length", fmt.Sprintf("%d", len(finalBody)))
 	if w.statusCode > 0 {
 		w.ResponseWriter.WriteHeader(w.statusCode)
@@ -220,13 +220,13 @@ func (w *injectMiddlewareResponseWriter) flush() {
 	w.ResponseWriter.Write(finalBody)
 }
 
-// InjectMiddleware — feedback widget'ı ve remote error loglayıcısını enjekte eder
+// InjectMiddleware wraps responses to inject the feedback widget and remote error logger.
 func InjectMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rw := &injectMiddlewareResponseWriter{
 			ResponseWriter: w,
 			bodyBuf:        &bytes.Buffer{},
-			statusCode:     http.StatusOK, // varsayılan
+			statusCode:     http.StatusOK,
 		}
 
 		next.ServeHTTP(rw, r)

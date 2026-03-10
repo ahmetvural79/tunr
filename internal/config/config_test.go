@@ -8,72 +8,70 @@ import (
 	"github.com/tunr-dev/tunr/internal/config"
 )
 
-// TestDefaultConfig - varsayılan config'in güvenli değerlerle geldiğini doğrula.
-// Özellikle TLSVerify'ın true olduğundan emin olmak istiyoruz.
-// (false gelen birisi şifreli trafik görmek istiyordur muhtemelen)
+// TestDefaultConfig — verifies default config uses safe values.
+// In particular, we want to make sure TLSVerify is true.
 func TestDefaultConfig(t *testing.T) {
 	cfg := config.DefaultConfig()
 
 	if cfg == nil {
-		t.Fatal("DefaultConfig nil döndü, bu çok yanlış")
+		t.Fatal("DefaultConfig returned nil")
 	}
 
-	// GÜVENLİK TESTİ: TLS verify kapalı olmamalı
+	// SECURITY: TLS verify must not be disabled
 	if !cfg.Tunnel.TLSVerify {
-		t.Error("TLSVerify varsayılan olarak true olmalı! false gönderen PR'ı reddedin.")
+		t.Error("TLSVerify must default to true — reject any PR that sets it to false")
 	}
 
-	// Version 1 olmalı
 	if cfg.Version != 1 {
-		t.Errorf("Config version beklenen 1, alınan %d", cfg.Version)
+		t.Errorf("config version expected 1, got %d", cfg.Version)
 	}
 
-	// Region "auto" olmalı (fixed bir değer seçmek mantıklı değil)
+	// Region should be "auto" (a fixed value would not make sense)
 	if cfg.Tunnel.Region != "auto" {
-		t.Errorf("Varsayılan bölge 'auto' olmalı, alınan: %q", cfg.Tunnel.Region)
+		t.Errorf("default region should be 'auto', got: %q", cfg.Tunnel.Region)
 	}
 }
 
-// TestConfigSaveAndLoad - config'in diske yazıldığında geri aynı okunduğunu test et.
+// TestConfigSaveAndLoad — verifies config round-trips through disk correctly.
 func TestConfigSaveAndLoad(t *testing.T) {
-	// Test için geçici dizin kullan, gerçek config'i kirletme
+	// Use a temp dir so we don't pollute the real config
 	tmpDir := t.TempDir()
 
-	// Geçici config yolu için env var hack (gerçek implementasyonda daha temiz yapılır)
-	// Not: Bu test, config.Save'in implement edilmesine bağlıdır
+	// Env var hack for temp config path (will be cleaner in real implementation)
+	// Note: This test depends on config.Save being implemented
 	_ = tmpDir
 
 	cfg := config.DefaultConfig()
 	cfg.Tunnel.Region = "eu-west"
 	cfg.UI.Verbose = true
 
-	// Config'i kaydet ve tekrar yükle
-	// (Save metodunun gerçek path'i değiştirebilmesi için refactoring gerekecek)
-	// TODO: Faz 1'de dependency injection ile test edilebilir hale getir
+	// Save config and reload it
+	// (Save method needs refactoring to accept a custom path)
+	// TODO: Make testable via dependency injection in Phase 1
 
-	t.Log("Config save/load testi Faz 1'de implement edilecek (şimdilik placeholder)")
+	t.Log("Config save/load test will be implemented in Phase 1 (placeholder for now)")
 }
 
-// TestConfigSafePermissions - config dosyasının 0600 permission ile yazıldığını doğrula.
-// GÜVENLİK: Diğer kullanıcıların config'i okumaması lazım.
+// TestConfigSafePermissions — verifies config file is written with 0600 permissions.
+// SECURITY: Other users must not be able to read the config.
 func TestConfigSafePermissions(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test-config.json")
 
-	// 0600 ile bir dosya yaz ve permission'ı kontrol et
+	// Write a file with 0600 permissions and verify
 	err := os.WriteFile(testFile, []byte(`{"test": true}`), 0600)
 	if err != nil {
-		t.Fatalf("Test dosyası yazılamadı: %v", err)
+		t.Fatalf("failed to write test file: %v", err)
 	}
 
 	info, err := os.Stat(testFile)
 	if err != nil {
-		t.Fatalf("Dosya stat alınamadı: %v", err)
+		t.Fatalf("failed to stat file: %v", err)
 	}
 
-	// Unix permission mask: sadece owner read+write (0600)
+	// Unix permission mask: owner read+write only (0600)
 	perm := info.Mode().Perm()
 	if perm&0077 != 0 {
-		t.Errorf("Config dosyası group/other'a açık! Permission: %o (sadece 0600 olmalı)", perm)
+		t.Errorf("config file is accessible to group/other! permission: %o (should be 0600 only)", perm)
 	}
 }

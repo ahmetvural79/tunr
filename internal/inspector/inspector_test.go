@@ -13,28 +13,28 @@ import (
 	"github.com/tunr-dev/tunr/internal/inspector"
 )
 
-// TestNewInspector — ring buffer başlangıç durumu
+// TestNewInspector — ring buffer initial state
 func TestNewInspector(t *testing.T) {
 	ins := inspector.New(100)
 	if ins == nil {
-		t.Fatal("inspector.New nil döndürdü")
+		t.Fatal("inspector.New returned nil")
 	}
 	all := ins.GetAll()
 	if len(all) != 0 {
-		t.Errorf("başlangıçta %d istek var, 0 beklendi", len(all))
+		t.Errorf("got %d requests at start, expected 0", len(all))
 	}
 
 	stats := ins.Stats()
 	if v, ok := stats["total"]; ok && v != 0 {
-		t.Errorf("stats.total = %v, 0 beklendi", v)
+		t.Errorf("stats.total = %v, expected 0", v)
 	}
 }
 
-// TestMiddlewareCapture — HTTP isteği ve yanıtı doğru yakalandı mı?
+// TestMiddlewareCapture — verifies HTTP request and response are captured correctly
 func TestMiddlewareCapture(t *testing.T) {
 	ins := inspector.New(100)
 
-	// Test handler — JSON yanıt döner
+	// Test handler — returns a JSON response
 	target := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -50,40 +50,39 @@ func TestMiddlewareCapture(t *testing.T) {
 
 	handler.ServeHTTP(w, req)
 
-	// Tekrar kontrol et
-	time.Sleep(10 * time.Millisecond) // middleware goroutine bitmesini bekle
+	time.Sleep(10 * time.Millisecond) // wait for middleware goroutine to complete
 
 	all := ins.GetAll()
 	if len(all) != 1 {
-		t.Fatalf("1 istek beklendi, %d var", len(all))
+		t.Fatalf("expected 1 request, got %d", len(all))
 	}
 
 	captured := all[0]
 
-	// Temel alanlar
+	// Basic fields
 	if captured.Method != http.MethodGet {
-		t.Errorf("Method = %s, GET beklendi", captured.Method)
+		t.Errorf("Method = %s, expected GET", captured.Method)
 	}
 	if captured.Path != "/api/test" {
-		t.Errorf("Path = %s, /api/test beklendi", captured.Path)
+		t.Errorf("Path = %s, expected /api/test", captured.Path)
 	}
 	if captured.StatusCode != http.StatusOK {
-		t.Errorf("StatusCode = %d, 200 beklendi", captured.StatusCode)
+		t.Errorf("StatusCode = %d, expected 200", captured.StatusCode)
 	}
 
-	// GÜVENLİK: Authorization header REDACTED olmalı
+	// SECURITY: Authorization header must be REDACTED
 	authHeader := captured.ReqHeaders["Authorization"]
 	if authHeader != "[REDACTED]" {
-		t.Errorf("Authorization header REDACTED değil: %q", authHeader)
+		t.Errorf("Authorization header not REDACTED: %q", authHeader)
 	}
 
-	// Yanıt body yakalandı mı?
+	// Was the response body captured?
 	if !strings.Contains(captured.RespBody, "ok") {
-		t.Errorf("response body beklenen içerik yok: %q", captured.RespBody)
+		t.Errorf("response body missing expected content: %q", captured.RespBody)
 	}
 }
 
-// TestMiddlewareCapturePOST — POST body yakalanıyor mu?
+// TestMiddlewareCapturePOST — verifies POST body is captured
 func TestMiddlewareCapturePOST(t *testing.T) {
 	ins := inspector.New(100)
 
@@ -105,19 +104,19 @@ func TestMiddlewareCapturePOST(t *testing.T) {
 
 	all := ins.GetAll()
 	if len(all) != 1 {
-		t.Fatalf("1 istek beklendi, %d var", len(all))
+		t.Fatalf("expected 1 request, got %d", len(all))
 	}
 
 	captured := all[0]
 	if !strings.Contains(captured.ReqBody, "tunr") {
-		t.Errorf("request body yanıtsız: %q", captured.ReqBody)
+		t.Errorf("request body not captured: %q", captured.ReqBody)
 	}
 	if captured.StatusCode != http.StatusCreated {
-		t.Errorf("StatusCode = %d, 201 beklendi", captured.StatusCode)
+		t.Errorf("StatusCode = %d, expected 201", captured.StatusCode)
 	}
 }
 
-// TestGzipDecode — gzip sıkıştırılmış yanıt açılıyor mu?
+// TestGzipDecode — verifies gzip-compressed response is decoded
 func TestGzipDecode(t *testing.T) {
 	ins := inspector.New(100)
 
@@ -143,17 +142,17 @@ func TestGzipDecode(t *testing.T) {
 
 	all := ins.GetAll()
 	if len(all) != 1 {
-		t.Fatalf("1 istek beklendi, %d var", len(all))
+		t.Fatalf("expected 1 request, got %d", len(all))
 	}
 
-	// Inspector body compressed değil, decode edilmiş olmalı
+	// Inspector body should be decoded, not compressed
 	respBody := all[0].RespBody
 	if !strings.Contains(respBody, "compressed") && !strings.Contains(respBody, "data") {
-		t.Logf("Gzip body (ham veya decode): %q", respBody)
+		t.Logf("Gzip body (raw or decoded): %q", respBody)
 	}
 }
 
-// TestRingBuffer — maksimum kapasite aşıldığında eski kayıtlar silinir
+// TestRingBuffer — old entries are evicted when max capacity is exceeded
 func TestRingBuffer(t *testing.T) {
 	maxSize := 5
 	ins := inspector.New(maxSize)
@@ -163,7 +162,7 @@ func TestRingBuffer(t *testing.T) {
 	})
 	handler := ins.Middleware(target)
 
-	// maxSize + 3 istek gönder
+	// Send maxSize + 3 requests
 	for i := 0; i < maxSize+3; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		w := httptest.NewRecorder()
@@ -173,11 +172,11 @@ func TestRingBuffer(t *testing.T) {
 
 	all := ins.GetAll()
 	if len(all) > maxSize {
-		t.Errorf("ring buffer %d kayıt tutuyor, max %d", len(all), maxSize)
+		t.Errorf("ring buffer holds %d entries, max %d", len(all), maxSize)
 	}
 }
 
-// TestGetByID — ID ile istek bulunuyor mu?
+// TestGetByID — verifies request lookup by ID
 func TestGetByID(t *testing.T) {
 	ins := inspector.New(100)
 
@@ -193,32 +192,32 @@ func TestGetByID(t *testing.T) {
 
 	all := ins.GetAll()
 	if len(all) == 0 {
-		t.Fatal("istek yakalanmadı")
+		t.Fatal("no request captured")
 	}
 
 	id := all[0].ID
 	found, err := ins.GetByID(id)
 	if err != nil {
-		t.Fatalf("GetByID(%s) hata: %v", id, err)
+		t.Fatalf("GetByID(%s) error: %v", id, err)
 	}
 	if found.ID != id {
-		t.Errorf("bulunan ID = %s, beklenen %s", found.ID, id)
+		t.Errorf("found ID = %s, expected %s", found.ID, id)
 	}
 	if found.Path != "/find-me" {
-		t.Errorf("Path = %s, /find-me beklendi", found.Path)
+		t.Errorf("Path = %s, expected /find-me", found.Path)
 	}
 }
 
-// TestGetByIDNotFound — var olmayan ID için hata döner
+// TestGetByIDNotFound — returns error for nonexistent ID
 func TestGetByIDNotFound(t *testing.T) {
 	ins := inspector.New(100)
 	_, err := ins.GetByID("nonexistent-id-xyz")
 	if err == nil {
-		t.Error("var olmayan ID için nil hata döndü, error beklendi")
+		t.Error("got nil error for nonexistent ID, expected error")
 	}
 }
 
-// TestClear — buffer temizleniyor mu?
+// TestClear — verifies buffer is cleared
 func TestClear(t *testing.T) {
 	ins := inspector.New(100)
 
@@ -227,7 +226,7 @@ func TestClear(t *testing.T) {
 	})
 	handler := ins.Middleware(target)
 
-	// Birkaç istek
+	// Send a few requests
 	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		w := httptest.NewRecorder()
@@ -236,17 +235,17 @@ func TestClear(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	if len(ins.GetAll()) == 0 {
-		t.Fatal("istek yok, temizlemeden önce istek bekleniyor")
+		t.Fatal("no requests found, expected requests before clearing")
 	}
 
 	ins.Clear()
 
 	if len(ins.GetAll()) != 0 {
-		t.Errorf("Clear() sonrası %d istek var, 0 beklendi", len(ins.GetAll()))
+		t.Errorf("got %d requests after Clear(), expected 0", len(ins.GetAll()))
 	}
 }
 
-// TestExportCurl — curl komutu doğru formatlanıyor mu?
+// TestExportCurl — verifies curl command is formatted correctly
 func TestExportCurl(t *testing.T) {
 	ins := inspector.New(100)
 
@@ -265,27 +264,27 @@ func TestExportCurl(t *testing.T) {
 
 	all := ins.GetAll()
 	if len(all) == 0 {
-		t.Fatal("istek yakalanmadı")
+		t.Fatal("no request captured")
 	}
 
 	curl, err := ins.ExportCurl(all[0].ID)
 	if err != nil {
-		t.Fatalf("ExportCurl hata: %v", err)
+		t.Fatalf("ExportCurl error: %v", err)
 	}
 
-	// curl komutu doğru parçaları içeriyor mu?
+	// Does the curl command contain the correct parts?
 	if !strings.HasPrefix(curl, "curl") {
-		t.Errorf("curl çıktısı 'curl' ile başlamıyor: %q", curl)
+		t.Errorf("curl output does not start with 'curl': %q", curl)
 	}
 	if !strings.Contains(curl, "-X POST") {
-		t.Errorf("curl çıktısında method yok: %q", curl)
+		t.Errorf("curl output missing method: %q", curl)
 	}
 	if !strings.Contains(curl, "Content-Type") {
-		t.Errorf("curl çıktısında Content-Type header yok: %q", curl)
+		t.Errorf("curl output missing Content-Type header: %q", curl)
 	}
 }
 
-// TestSensitiveHeaderRedaction — hassas header'lar log'a geçmiyor
+// TestSensitiveHeaderRedaction — sensitive headers are not leaked to logs
 func TestSensitiveHeaderRedaction(t *testing.T) {
 	ins := inspector.New(100)
 
@@ -312,19 +311,19 @@ func TestSensitiveHeaderRedaction(t *testing.T) {
 
 	all := ins.GetAll()
 	if len(all) == 0 {
-		t.Fatal("istek yakalanmadı")
+		t.Fatal("no request captured")
 	}
 
 	captured := all[0]
 	for k := range sensitiveHeaders {
 		val := captured.ReqHeaders[k]
 		if val != "[REDACTED]" && val != "" {
-			t.Errorf("Header %q REDACTED değil: %q", k, val)
+			t.Errorf("Header %q not REDACTED: %q", k, val)
 		}
 	}
 }
 
-// TestDurationRecorded — istek süresi kaydediliyor mu?
+// TestDurationRecorded — verifies request duration is recorded
 func TestDurationRecorded(t *testing.T) {
 	ins := inspector.New(100)
 
@@ -341,10 +340,10 @@ func TestDurationRecorded(t *testing.T) {
 
 	all := ins.GetAll()
 	if len(all) == 0 {
-		t.Fatal("istek yakalanmadı")
+		t.Fatal("no request captured")
 	}
 
 	if all[0].DurationMs < 10 {
-		t.Errorf("DurationMs = %d, en az 10ms beklendi", all[0].DurationMs)
+		t.Errorf("DurationMs = %d, expected at least 10ms", all[0].DurationMs)
 	}
 }

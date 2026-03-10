@@ -15,14 +15,14 @@ import (
 	"github.com/tunr-dev/tunr/internal/logger"
 )
 
-// Dashboard UI Go binary'nin içine gömülü!
-// Bu sayede ayrı bir web sunucusu veya dosya görüntüleyici gerekmez.
-// "tunr open" komutu tarayıcıyı açar, binary'nin kendisi serve eder.
+// The dashboard UI is embedded in the binary itself.
+// No separate web server or file host needed —
+// "tunr open" launches the browser and this binary serves the UI.
 //
 //go:embed static/*
 var staticFiles embed.FS
 
-// LogEntry - tek bir HTTP request log satırı
+// LogEntry is a single HTTP request log line
 type LogEntry struct {
 	Time       time.Time `json:"time"`
 	TunnelID   string    `json:"tunnel_id"`
@@ -31,28 +31,26 @@ type LogEntry struct {
 	StatusCode int       `json:"status_code"`
 	DurationMs int64     `json:"duration_ms"`
 	BytesSent  int64     `json:"bytes_sent"`
-	RemoteIP   string    `json:"remote_ip"` // GÜVENLİK: tam IP, sadece dashboard'da gösterilir
+	RemoteIP   string    `json:"remote_ip"` // SECURITY: full IP, only shown in the local dashboard
 }
 
-// DashboardServer - tunr web dashboard sunucusu
+// DashboardServer serves the tunr web dashboard
 type DashboardServer struct {
 	port   int
 	server *http.Server
 
-	// Log ring buffer — son N kaydı tut
 	mu      sync.RWMutex
 	logs    []LogEntry
 	maxLogs int
 
-	// WebSocket subscribers — gerçek zamanlı log takibi
-	wsMu        sync.Mutex
-	wsClients   map[*websocket.Conn]bool
+	// WebSocket subscribers for real-time log streaming
+	wsMu      sync.Mutex
+	wsClients map[*websocket.Conn]bool
 
-	// Tünel bilgisi callback (main'den inject edilir)
 	getTunnels func() []TunnelSummary
 }
 
-// TunnelSummary - dashboard için özet tünel bilgisi
+// TunnelSummary is a condensed tunnel view for the dashboard
 type TunnelSummary struct {
 	ID           string    `json:"id"`
 	LocalPort    int       `json:"local_port"`
@@ -62,51 +60,46 @@ type TunnelSummary struct {
 	RequestCount int64     `json:"request_count"`
 }
 
-// wsUpgrader - dashboard WebSocket bağlantıları için
 var wsUpgrader = websocket.Upgrader{
-	// GÜVENLİK: Dashboard sadece localhost'tan açılır
-	// Ama yine de origin kontrolü yapıyoruz, alışkanlık olsun
+	// SECURITY: dashboard is localhost-only, but we still check origin — defense in depth
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
 		if origin == "" {
 			return true
 		}
-		// localhost ve 127.0.0.1'e izin ver
 		host, _, _ := net.SplitHostPort(r.Host)
 		return host == "localhost" || host == "127.0.0.1" || host == "::1"
 	},
 }
 
-// New - dashboard sunucusu oluştur
+// New creates a dashboard server
 func New(port int, getTunnels func() []TunnelSummary) *DashboardServer {
 	return &DashboardServer{
 		port:       port,
-		maxLogs:    5000, // son 5000 isteği tut
+		maxLogs:    5000,
 		logs:       make([]LogEntry, 0, 5000),
 		wsClients:  make(map[*websocket.Conn]bool),
 		getTunnels: getTunnels,
 	}
 }
 
-// Start - dashboard HTTP sunucusunu başlat
+// Start boots the dashboard HTTP server
 func (d *DashboardServer) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 
-	// Statik dosyalar (embed.FS'ten)
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
-		return fmt.Errorf("static dosyalar yüklenemedi: %w", err)
+		return fmt.Errorf("failed to load static files: %w", err)
 	}
 	mux.Handle("/", http.FileServer(http.FS(staticFS)))
 
-	// API endpoint'leri
 	mux.HandleFunc("/api/tunnels", d.handleTunnels)
 	mux.HandleFunc("/api/logs", d.handleLogs)
 	mux.HandleFunc("/api/ws/logs", d.handleWSLogs)
 	mux.HandleFunc("/api/status", d.handleStatus)
 
 	d.server = &http.Server{
-		Addr:         fmt.Sprintf("127.0.0.1:%d", d.port), // sadece localhost!
+		Addr:         fmt.Sprintf("127.0.0.1:%d", d.port),
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
@@ -115,7 +108,6 @@ func (d *DashboardServer) Start(ctx context.Context) error {
 
 	logger.Info("Dashboard: http://localhost:%d", d.port)
 
-	// Graceful shutdown
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -124,26 +116,23 @@ func (d *DashboardServer) Start(ctx context.Context) error {
 	}()
 
 	if err := d.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("dashboard sunucu hatası: %w", err)
+		return fmt.Errorf("dashboard server error: %w", err)
 	}
 	return nil
 }
 
-// AddLog - yeni log kaydı ekle ve WebSocket subscribers'a bildir
+// AddLog appends a log entry and broadcasts it to WebSocket subscribers
 func (d *DashboardServer) AddLog(entry LogEntry) {
 	d.mu.Lock()
-	// Ring buffer: dolunca eskiyi at
 	if len(d.logs) >= d.maxLogs {
 		d.logs = d.logs[len(d.logs)-d.maxLogs+1:]
 	}
 	d.logs = append(d.logs, entry)
 	d.mu.Unlock()
 
-	// WebSocket'e broadcast et (arka planda)
 	go d.broadcastLog(entry)
 }
 
-// broadcastLog - tüm WebSocket clients'a log gönder
 func (d *DashboardServer) broadcastLog(entry LogEntry) {
 	data, err := json.Marshal(entry)
 	if err != nil {
@@ -160,7 +149,6 @@ func (d *DashboardServer) broadcastLog(entry LogEntry) {
 		}
 	}
 
-	// Kopuk bağlantıları temizle
 	for _, conn := range dead {
 		conn.Close()
 		delete(d.wsClients, conn)
@@ -169,7 +157,6 @@ func (d *DashboardServer) broadcastLog(entry LogEntry) {
 
 // ─── API Handlers ────────────────────────────────────────────────────────────
 
-// handleTunnels - aktif tunnel listesi
 func (d *DashboardServer) handleTunnels(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -184,7 +171,7 @@ func (d *DashboardServer) handleTunnels(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	// GÜVENLİK: Dashboard sadece localhost'tan erişilir ama yine de header ekle
+	// SECURITY: dashboard is localhost-only, but set cache headers anyway — belt and suspenders
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"tunnels": tunnels,
@@ -192,7 +179,6 @@ func (d *DashboardServer) handleTunnels(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// handleLogs - son N log kaydını getir
 func (d *DashboardServer) handleLogs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -212,11 +198,11 @@ func (d *DashboardServer) handleLogs(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleWSLogs - WebSocket canlı log akışı
+// handleWSLogs upgrades to WebSocket for live log streaming
 func (d *DashboardServer) handleWSLogs(w http.ResponseWriter, r *http.Request) {
 	conn, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Warn("Dashboard WS upgrade hatası: %v", err)
+		logger.Warn("Dashboard WS upgrade error: %v", err)
 		return
 	}
 
@@ -231,7 +217,7 @@ func (d *DashboardServer) handleWSLogs(w http.ResponseWriter, r *http.Request) {
 		conn.Close()
 	}()
 
-	// Son 100 log'u hemen gönder (yeni bağlanan kullanıcı görsün)
+	// Send the last 100 logs immediately so new clients aren't staring at an empty screen
 	d.mu.RLock()
 	recentCount := 100
 	start := 0
@@ -249,14 +235,12 @@ func (d *DashboardServer) handleWSLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Bağlantı kopana kadar bekle (ping/pong)
 	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
 
-	// Ping ticker — bağlantının canlı olduğunu kontrol et
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -282,12 +266,11 @@ func (d *DashboardServer) handleWSLogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleStatus - sunucu durumu
 func (d *DashboardServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":    "ok",
 		"timestamp": time.Now().Unix(),
-		"version":   "faz2",
+		"version":   "phase2",
 	})
 }
