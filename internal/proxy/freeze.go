@@ -89,7 +89,7 @@ func (c *FreezeCache) Middleware(next http.Handler) http.Handler {
 					headersCopy.Add(k, v)
 				}
 			}
-			
+
 			// Skip caching bodies over 5MB — we're not Redis
 			if rec.body.Len() < 5*1024*1024 {
 				c.entries[cacheKey] = &cacheEntry{
@@ -136,7 +136,7 @@ func (c *FreezeCache) ServeFromCache(w http.ResponseWriter, r *http.Request) boo
 	// Tag the response so devtools can spot it
 	w.Header().Set("X-Tunr-Freeze-Cache", "HIT")
 	w.Header().Set("X-Cache-Saved-At", entry.SavedAt.Format(time.RFC3339))
-	
+
 	w.WriteHeader(entry.StatusCode)
 	io.Copy(w, bytes.NewReader(entry.Body))
 	return true

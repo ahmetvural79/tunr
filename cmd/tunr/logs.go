@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/term"
 	"github.com/spf13/cobra"
 )
 
@@ -75,23 +75,14 @@ Requires the inspector to be running (starts automatically with tunr share).`,
 				return nil
 			}
 
-			dim := color.New(color.FgHiBlack)
-
 			for _, r := range requests {
-				statusColor := color.New(color.FgGreen)
-				if r.Status >= 400 {
-					statusColor = color.New(color.FgYellow)
-				}
-				if r.Status >= 500 {
-					statusColor = color.New(color.FgRed)
-				}
-
+				statusStyle := term.StyleForStatus(r.Status)
 				fmt.Printf("%s  %-7s %s  %s  %s\n",
-					dim.Sprint(r.Time),
+					term.Dim.Sprint(r.Time),
 					r.Method,
 					r.Path,
-					statusColor.Sprintf("%d", r.Status),
-					dim.Sprintf("%dms", r.Duration),
+					statusStyle.Sprintf("%d", r.Status),
+					term.Dim.Sprintf("%dms", r.Duration),
 				)
 			}
 
@@ -115,19 +106,13 @@ Requires the inspector to be running (starts automatically with tunr share).`,
 					}
 					if json.Unmarshal(body, &newReqs) == nil {
 						for _, r := range newReqs {
-							statusColor := color.New(color.FgGreen)
-							if r.Status >= 400 {
-								statusColor = color.New(color.FgYellow)
-							}
-							if r.Status >= 500 {
-								statusColor = color.New(color.FgRed)
-							}
+							statusStyle := term.StyleForStatus(r.Status)
 							fmt.Printf("%s  %-7s %s  %s  %s\n",
-								dim.Sprint(r.Time),
+								term.Dim.Sprint(r.Time),
 								r.Method,
 								r.Path,
-								statusColor.Sprintf("%d", r.Status),
-								dim.Sprintf("%dms", r.Duration),
+								statusStyle.Sprintf("%d", r.Status),
+								term.Dim.Sprintf("%dms", r.Duration),
 							)
 						}
 					}

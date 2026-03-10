@@ -14,8 +14,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/term"
 	"github.com/spf13/cobra"
 )
 
@@ -27,11 +27,9 @@ func newUpdateCmd() *cobra.Command {
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repo := "ahmetvural79/tunr"
-			dim := color.New(color.FgHiBlack)
-			green := color.New(color.FgGreen)
 
 			fmt.Println()
-			dim.Println("  Checking for updates...")
+			term.Dim.Println("  Checking for updates...")
 
 			tag, err := latestTag(repo)
 			if err != nil {
@@ -40,7 +38,7 @@ func newUpdateCmd() *cobra.Command {
 			latest := strings.TrimPrefix(tag, "v")
 
 			if latest == Version {
-				green.Printf("  Already up to date (v%s)\n\n", Version)
+				term.Green.Printf("  Already up to date (v%s)\n\n", Version)
 				return nil
 			}
 
@@ -84,16 +82,16 @@ func newUpdateCmd() *cobra.Command {
 			}
 
 			for _, s := range steps {
-				dim.Printf("  %s...", s.name)
+				term.Dim.Printf("  %s...", s.name)
 				if err := s.fn(); err != nil {
-					color.New(color.FgRed).Println(" failed")
+					term.Red.Println(" failed")
 					return fmt.Errorf("%s failed: %w", s.name, err)
 				}
-				green.Println(" done")
+				term.Green.Println(" done")
 			}
 
 			fmt.Println()
-			green.Printf("  Updated to v%s\n\n", latest)
+			term.Green.Printf("  Updated to v%s\n\n", latest)
 			return nil
 		},
 	}

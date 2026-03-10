@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/gorilla/websocket"
 )
 
 // The dashboard UI is embedded in the binary itself.
@@ -235,10 +235,9 @@ func (d *DashboardServer) handleWSLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		return nil
+		return conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	})
 
 	ticker := time.NewTicker(30 * time.Second)

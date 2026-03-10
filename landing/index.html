@@ -343,19 +343,19 @@
                 <ol class="steps-list">
                     <li class="step-item">
                         <div class="step-number" style="color: var(--accent-pink);">1</div>
-                        <div class="step-text">Opens a secure, multiplexed WebSocket connection to the global Relay Network.</div>
+                        <div class="step-text">Requests a public HTTPS URL from the Relay server, backed by Cloudflare's global edge network. Your localhost becomes reachable from anywhere with automatic TLS — zero DNS config required.</div>
                     </li>
                     <li class="step-item">
                         <div class="step-number" style="color: var(--accent-cyan);">2</div>
-                        <div class="step-text">Spins up a local HTTP Proxy to intercept, mock (Demo Mode), or pass entirely (Path Routing) the requests directed towards your localhost.</div>
+                        <div class="step-text">Spins up a local reverse proxy with a layered middleware stack — Demo Mode blocks destructive writes, Freeze Mode caches responses for crash protection, widget injection adds a feedback overlay, and Path Routing fans requests to multiple local ports.</div>
                     </li>
                     <li class="step-item">
                         <div class="step-number" style="color: var(--accent-orange);">3</div>
-                        <div class="step-text">Handles end-to-end WebSocket upgrades instantly so that HMR (Next.js, Vite) works completely out of the box.</div>
+                        <div class="step-text">Transparently upgrades WebSocket connections end-to-end, so HMR (Next.js, Vite) and real-time features work completely out of the box without any configuration.</div>
                     </li>
                     <li class="step-item">
                         <div class="step-number" style="color: var(--accent-green);">4</div>
-                        <div class="step-text">Continuously logs interactions down to the millisecond inside memory, providing AI agents via MCP unparalleled debugging visibility.</div>
+                        <div class="step-text">The built-in HTTP Inspector captures every request and response with millisecond timing in an in-memory ring buffer. Browse them in the web dashboard, stream via <code>tunr logs</code>, or let AI agents query traffic through the Model Context Protocol.</div>
                     </li>
                 </ol>
             </div>

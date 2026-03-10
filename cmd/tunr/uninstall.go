@@ -5,10 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fatih/color"
 	"github.com/ahmetvural79/tunr/internal/config"
 	"github.com/ahmetvural79/tunr/internal/daemon"
 	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/term"
 	"github.com/spf13/cobra"
 )
 
@@ -19,9 +19,6 @@ func newUninstallCmd() *cobra.Command {
 		Long:  "Stops the daemon, removes config, auth tokens, and the binary itself.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dim := color.New(color.FgHiBlack)
-			green := color.New(color.FgGreen)
-
 			fmt.Println()
 			logger.Info("Uninstalling tunr...")
 			fmt.Println()
@@ -63,11 +60,11 @@ func newUninstallCmd() *cobra.Command {
 			}
 
 			for _, s := range steps {
-				dim.Printf("  %s...", s.name)
+				term.Dim.Printf("  %s...", s.name)
 				if err := s.fn(); err != nil {
-					dim.Println(" skipped")
+					term.Dim.Println(" skipped")
 				} else {
-					green.Println(" done")
+					term.Green.Println(" done")
 				}
 			}
 

@@ -9,9 +9,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/ahmetvural79/tunr/internal/auth"
 	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/term"
 	"github.com/spf13/cobra"
 )
 
@@ -39,7 +39,11 @@ Required for Pro features (custom subdomains, custom domains, etc.)`,
 			if err != nil {
 				return fmt.Errorf("failed to start callback server: %w", err)
 			}
-			callbackPort := listener.Addr().(*net.TCPAddr).Port
+			tcpAddr, ok := listener.Addr().(*net.TCPAddr)
+			if !ok {
+				return fmt.Errorf("unexpected listener address type")
+			}
+			callbackPort := tcpAddr.Port
 
 			tokenCh := make(chan string, 1)
 			errCh := make(chan error, 1)
@@ -76,11 +80,10 @@ Required for Pro features (custom subdomains, custom domains, etc.)`,
 			loginURL := fmt.Sprintf("https://app.tunr.sh/auth/cli?state=%s&callback=http://localhost:%d/callback",
 				state, callbackPort)
 
-			dim := color.New(color.FgHiBlack)
 			fmt.Println()
 			logger.Info("Opening browser for login...")
-			dim.Printf("  %s\n\n", loginURL)
-			dim.Println("  Waiting for authentication...")
+			term.Dim.Printf("  %s\n\n", loginURL)
+			term.Dim.Println("  Waiting for authentication...")
 			fmt.Println()
 
 			openBrowser(loginURL)

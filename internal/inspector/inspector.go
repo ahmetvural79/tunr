@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/google/uuid"
 )
 
 // HTTP Inspector — full-body capture for every request and response.
@@ -31,16 +31,16 @@ type CapturedRequest struct {
 	Path       string            `json:"path"`
 	RemoteAddr string            `json:"remote_addr"`
 	ReqHeaders map[string]string `json:"req_headers"`
-	ReqBody    string            `json:"req_body"`   // max 64KB
+	ReqBody    string            `json:"req_body"` // max 64KB
 	ReqBodyLen int64             `json:"req_body_len"`
-	
+
 	StatusCode  int               `json:"status_code"`
 	RespHeaders map[string]string `json:"resp_headers"`
-	RespBody    string            `json:"resp_body"`   // max 64KB
+	RespBody    string            `json:"resp_body"` // max 64KB
 	RespBodyLen int64             `json:"resp_body_len"`
-	
-	DurationMs int64  `json:"duration_ms"`
-	
+
+	DurationMs int64 `json:"duration_ms"`
+
 	ContentType string `json:"content_type"`
 	IsJSON      bool   `json:"is_json"`
 }
@@ -51,8 +51,7 @@ type Inspector struct {
 	requests []*CapturedRequest
 	maxSize  int
 
-	subscribers atomic.Int32 // how many WS clients are streaming live logs
-	totalCount  atomic.Int64 // lifetime request counter
+	totalCount atomic.Int64 // lifetime request counter
 
 	// fires when a new request is captured — used to push to the web UI
 	OnNewRequest func(req *CapturedRequest)
@@ -295,14 +294,14 @@ func (ins *Inspector) ExportCurl(id string) (string, error) {
 // SECURITY: this is critical — auth tokens must never end up in logs or captures.
 func sanitizeHeaders(headers http.Header) map[string]string {
 	sensitiveHeaders := map[string]bool{
-		"authorization": true,
-		"cookie":        true,
-		"set-cookie":    true,
-		"x-api-key":     true,
-		"x-auth-token":  true,
-		"x-access-token": true,
-		"x-secret":      true,
-		"x-password":    true,
+		"authorization":       true,
+		"cookie":              true,
+		"set-cookie":          true,
+		"x-api-key":           true,
+		"x-auth-token":        true,
+		"x-access-token":      true,
+		"x-secret":            true,
+		"x-password":          true,
 		"proxy-authorization": true,
 	}
 

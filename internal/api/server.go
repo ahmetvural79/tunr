@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tunr-dev/tunr/internal/billing"
-	"github.com/tunr-dev/tunr/internal/inspector"
-	"github.com/tunr-dev/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/billing"
+	"github.com/ahmetvural79/tunr/internal/inspector"
+	"github.com/ahmetvural79/tunr/internal/logger"
 )
 
 // Server is tunr's internal API server.
@@ -18,7 +18,6 @@ type Server struct {
 	port         int
 	paddleClient *billing.PaddleClient
 	ins          *inspector.Inspector
-	httpServer   *http.Client
 }
 
 // New creates an API server

@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/ahmetvural79/tunr/internal/logger"
 	"github.com/ahmetvural79/tunr/internal/proxy"
+	"github.com/google/uuid"
 )
 
 // TunnelStatus represents where a tunnel is in its lifecycle
@@ -95,7 +95,7 @@ func (m *Manager) Start(ctx context.Context, port int, opts StartOptions) (*Tunn
 	if opts.Freeze {
 		localProxy.Freeze = proxy.NewFreezeCache(true)
 	}
-	
+
 	localProxy.BuildMiddlewareChain()
 
 	if err := localProxy.HealthCheck(ctx); err != nil {
@@ -283,16 +283,5 @@ func validatePort(port int) error {
 	if port < 1024 {
 		return fmt.Errorf("port %d requires root privileges — use 1024 or above", port)
 	}
-	return nil
-}
-
-// checkPortReachable is a legacy health check — kept around for backward compat
-func checkPortReachable(port int) error {
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://localhost:%d", port))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
 	return nil
 }

@@ -1,23 +1,16 @@
 name: CI
 
-# Her PR ve main push'ta çalışır.
-# "Çalışıyordu bende" diyen PR'lar için CI var.
 on:
   push:
     branches: [main, develop]
   pull_request:
     branches: [main]
 
-# Aynı branch'e hızlı push yapınca önceki CI'ı iptal et
-# (kaynak israfı önleme - fatura önemli)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # ────────────────────────────────────────────
-  # Lint - "Bu kodu okuyabiliyor musun?" testi
-  # ────────────────────────────────────────────
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -25,11 +18,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Go kurulum
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-          cache: true  # modülleri cache'le, zamandan kazan
+          cache: true
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v4
@@ -37,14 +30,11 @@ jobs:
           version: latest
           args: --timeout=5m
 
-  # ────────────────────────────────────────────
-  # Test - "Gerçekten çalışıyor mu?" testi
-  # ────────────────────────────────────────────
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false  # bir platform bozulunca diğerini de öldürme
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
@@ -52,33 +42,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Go kurulum
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
           cache: true
 
-      - name: Bağımlılıkları indir
+      - name: Download dependencies
         run: go mod download
 
-      - name: Build testi (derleniyor mu?)
+      - name: Build
         run: go build ./...
 
-      - name: Unit testler
+      - name: Unit tests
         run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
-        # -race: race condition'ları yakala (biraz yavaş ama değer)
 
-      - name: Coverage badge güncelle (sadece main'de)
+      - name: Upload coverage (main only)
         if: matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.txt
-          fail_ci_if_error: false  # coverage upload failuresi CI'ı bloklamamalı
+          fail_ci_if_error: false
 
-  # ────────────────────────────────────────────
-  # Security - "Güvenlik açığı var mı?" testi
-  # Bu açık kaynak proje için çok önemli!
-  # ────────────────────────────────────────────
   security:
     name: Security Audit
     runs-on: ubuntu-latest
@@ -86,24 +71,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Go kurulum
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
           cache: true
 
-      - name: govulncheck - Go vulnerability scanner
-        # Google'ın resmi vuln scanner'ı - dependency CVE'lerini yakalar
+      - name: govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
-      - name: go vet - statik analiz
+      - name: go vet
         run: go vet ./...
 
-  # ────────────────────────────────────────────
-  # Build check - Tüm platformlar için build
-  # ────────────────────────────────────────────
   build:
     name: Build Check
     runs-on: ubuntu-latest
@@ -112,7 +93,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Go kurulum
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
@@ -120,7 +101,7 @@ jobs:
 
       - name: Cross-platform build
         env:
-          CGO_ENABLED: "0"  # statik binary için
+          CGO_ENABLED: "0"
         run: |
           GOOS=linux   GOARCH=amd64  go build -o dist/tunr-linux-amd64   ./cmd/tunr
           GOOS=linux   GOARCH=arm64  go build -o dist/tunr-linux-arm64   ./cmd/tunr
@@ -128,12 +109,12 @@ jobs:
           GOOS=darwin  GOARCH=arm64  go build -o dist/tunr-darwin-arm64  ./cmd/tunr
           GOOS=windows GOARCH=amd64  go build -o dist/tunr-windows-amd64.exe ./cmd/tunr
 
-      - name: Binary boyutlarını göster (merak ediyoruz)
+      - name: Show binary sizes
         run: ls -lh dist/
 
-      - name: Build artifact olarak yükle
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: tunr-binaries-${{ github.sha }}
           path: dist/
-          retention-days: 7  # 7 gün sonra silinsin, yer dolmasın
+          retention-days: 7

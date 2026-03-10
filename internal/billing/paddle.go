@@ -32,9 +32,9 @@ const (
 // PlanLimits defines the quota boundaries for each plan
 type PlanLimits struct {
 	MaxTunnels     int
-	MaxRequestsDay int  // daily request cap
+	MaxRequestsDay int // daily request cap
 	CustomDomain   bool
-	LogsRetention  int  // days
+	LogsRetention  int // days
 	TeamMembers    int
 }
 

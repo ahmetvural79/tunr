@@ -2,6 +2,8 @@ package tunnel
 
 import (
 	"context"
+	cryptoRand "crypto/rand"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -111,13 +113,8 @@ func defaultIsRetryable(err error) bool {
 		return false
 	}
 
-	switch err.(type) {
-	case *url.Error:
-		ue := err.(*url.Error)
-		if ue.Timeout() {
-			return true
-		}
-		// DNS failure, connection refused — server might still be booting
+	var ue *url.Error
+	if errors.As(err, &ue) {
 		return true
 	}
 
@@ -163,9 +160,9 @@ func (rc *RelayClient) RequestTunnel(ctx context.Context, port int, opts TunnelR
 	publicURL := fmt.Sprintf("https://%s.trycloudflare.com", generateSubdomain())
 
 	return &TunnelResponse{
-		PublicURL:  publicURL,
-		TunnelID:   generateID(),
-		ExpiresAt:  time.Now().Add(8 * time.Hour),
+		PublicURL: publicURL,
+		TunnelID:  generateID(),
+		ExpiresAt: time.Now().Add(8 * time.Hour),
 	}, nil
 }
 
@@ -216,7 +213,7 @@ func isPrivateHost(host string) bool {
 	}
 	if len(host) >= 7 && host[:4] == "172." {
 		var second int
-		fmt.Sscanf(host[4:], "%d", &second)
+		_, _ = fmt.Sscanf(host[4:], "%d", &second)
 		if second >= 16 && second <= 31 {
 			return true
 		}
@@ -227,13 +224,13 @@ func isPrivateHost(host string) bool {
 // generateSubdomain creates a random hex subdomain for quicktunnel
 func generateSubdomain() string {
 	b := make([]byte, 4)
-	rand.Read(b)
+	_, _ = cryptoRand.Read(b)
 	return fmt.Sprintf("%x", b)
 }
 
 // generateID mints a short random tunnel ID
 func generateID() string {
 	b := make([]byte, 8)
-	rand.Read(b)
+	_, _ = cryptoRand.Read(b)
 	return fmt.Sprintf("%x", b)[:8]
 }

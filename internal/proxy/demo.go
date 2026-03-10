@@ -25,7 +25,7 @@ func DemoMiddleware(next http.Handler) http.Handler {
 		// Mutation blocked — return a convincing fake success
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Tunr-Demo-Mode", "blocked-mutation")
-		
+
 		status := http.StatusOK
 		if r.Method == http.MethodPost {
 			status = http.StatusCreated
@@ -33,10 +33,10 @@ func DemoMiddleware(next http.Handler) http.Handler {
 		w.WriteHeader(status)
 
 		// Most frontend libs (React Query, SWR) expect JSON back
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":  "demo_success",
 			"message": "Mutations are disabled in Tunr Demo Mode. Request intercepted and faked.",
-			"tunr":   true,
+			"tunr":    true,
 			"method":  r.Method,
 			"path":    r.URL.Path,
 		})

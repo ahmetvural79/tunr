@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/fatih/color"
+	"github.com/ahmetvural79/tunr/internal/term"
 )
 
 // LogLevel controls how loud we get
@@ -28,15 +28,15 @@ type Logger struct {
 // Global default logger — because life is complicated enough without DI for logging
 var defaultLogger = &Logger{level: INFO}
 
-// Color styles — terminals deserve a splash of color
+// Styles for each severity — terminals deserve a splash of color
 var (
-	debugStyle = color.New(color.FgHiBlack, color.Bold)
-	infoStyle  = color.New(color.FgCyan, color.Bold)
-	warnStyle  = color.New(color.FgYellow, color.Bold)
-	errorStyle = color.New(color.FgRed, color.Bold)
-	fatalStyle = color.New(color.FgHiRed, color.Bold, color.BgRed)
-	timeStyle  = color.New(color.FgHiBlack)
-	urlStyle   = color.New(color.FgGreen, color.Bold, color.Underline)
+	debugStyle = term.NewStyle("#6b7280").Bold()
+	infoStyle  = term.Cyan
+	warnStyle  = term.Yellow
+	errorStyle = term.Red
+	fatalStyle = term.NewStyle("#fca5a5").Bold().Background("#991b1b")
+	timeStyle  = term.Dim
+	urlStyle   = term.URL
 )
 
 // New creates a logger with an optional prefix
@@ -57,7 +57,6 @@ func timestamp() string {
 // SECURITY: Prevents tokens/secrets from accidentally ending up in logs.
 // This is open source — assume everyone is reading.
 func sanitize(msg string) string {
-	// TODO: mask JWTs, API keys, etc. with proper regex
 	if len(msg) > 2000 {
 		return msg[:2000] + "... [truncated for sanity]"
 	}
@@ -135,14 +134,6 @@ func PrintURL(tunnelURL string) {
 
 // PrintBanner shows the startup banner — because ASCII art makes everything official
 func PrintBanner(version string) {
-	banner := color.New(color.FgCyan, color.Bold)
-	banner.Printf(`
-  ██████╗ ██████╗ ███████╗██╗   ██╗ ██████╗
-  ██╔══██╗██╔══██╗██╔════╝██║   ██║██╔═══██╗
-  ██████╔╝██████╔╝█████╗  ██║   ██║██║   ██║
-  ██╔═══╝ ██╔══██╗██╔══╝  ╚██╗ ██╔╝██║   ██║
-  ██║     ██║  ██║███████╗ ╚████╔╝ ╚██████╔╝
-  ╚═╝     ╚═╝  ╚═╝╚══════╝  ╚═══╝   ╚═════╝
-`)
-	color.New(color.FgHiBlack).Printf("  tunr.sh  •  v%s  •  local → public in < 3s\n\n", version)
+	term.Banner()
+	term.Dim.Printf("  tunr.sh  •  v%s  •  local → public in < 3s\n\n", version)
 }

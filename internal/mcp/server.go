@@ -321,7 +321,7 @@ func (s *Server) toolInspect(id interface{}, args json.RawMessage) {
 		Limit  int    `json:"limit"`
 		Method string `json:"method"`
 	}
-	json.Unmarshal(args, &input)
+	_ = json.Unmarshal(args, &input)
 	if input.Limit <= 0 {
 		input.Limit = 10
 	}

@@ -294,10 +294,10 @@ func TestSensitiveHeaderRedaction(t *testing.T) {
 	handler := ins.Middleware(target)
 
 	sensitiveHeaders := map[string]string{
-		"Authorization":   "Bearer my-secret-jwt",
-		"Cookie":          "session=abc123; auth=xyz",
-		"X-Api-Key":       "sk-prod-super-secret",
-		"X-Auth-Token":    "token-should-not-appear",
+		"Authorization":       "Bearer my-secret-jwt",
+		"Cookie":              "session=abc123; auth=xyz",
+		"X-Api-Key":           "sk-prod-super-secret",
+		"X-Auth-Token":        "token-should-not-appear",
 		"Proxy-Authorization": "Basic aGVsbG86d29ybGQ=",
 	}
 

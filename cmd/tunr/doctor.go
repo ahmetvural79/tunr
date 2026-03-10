@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/ahmetvural79/tunr/internal/auth"
 	"github.com/ahmetvural79/tunr/internal/config"
 	"github.com/ahmetvural79/tunr/internal/daemon"
+	"github.com/ahmetvural79/tunr/internal/term"
 	"github.com/spf13/cobra"
 )
 
@@ -25,14 +25,9 @@ func newDoctorCmd() *cobra.Command {
 }
 
 func runDoctor() error {
-	ok := color.New(color.FgGreen, color.Bold)
-	fail := color.New(color.FgRed, color.Bold)
-	warn := color.New(color.FgYellow, color.Bold)
-	title := color.New(color.FgCyan, color.Bold)
-	dim := color.New(color.FgHiBlack)
-
-	title.Println("\n  tunr doctor")
-	dim.Println("  ─────────────────────────────────────")
+	fmt.Println()
+	term.Cyan.Println("  tunr doctor")
+	fmt.Printf("  %s\n", term.Divider(37))
 	fmt.Println()
 
 	passed, total := 0, 0
@@ -42,9 +37,9 @@ func runDoctor() error {
 		msg, good := fn()
 		if good {
 			passed++
-			fmt.Printf("  %s  %-24s %s\n", ok.Sprint("✓"), name, dim.Sprint(msg))
+			fmt.Printf("  %s  %-24s %s\n", term.CheckMark, name, term.Dim.Sprint(msg))
 		} else {
-			fmt.Printf("  %s  %-24s %s\n", fail.Sprint("✗"), name, warn.Sprint(msg))
+			fmt.Printf("  %s  %-24s %s\n", term.CrossMark, name, term.Yellow.Sprint(msg))
 		}
 	}
 
@@ -112,14 +107,14 @@ func runDoctor() error {
 	})
 
 	fmt.Println()
-	dim.Println("  ─────────────────────────────────────")
+	fmt.Printf("  %s\n", term.Divider(37))
 
 	if passed == total {
-		ok.Printf("  All %d checks passed\n\n", total)
+		term.Green.Printf("  All %d checks passed\n\n", total)
 	} else {
-		warn.Printf("  %d/%d passed\n\n", passed, total)
-		dim.Println("  Help: https://tunr.sh/docs/troubleshooting")
-		dim.Println("  Issue: https://github.com/ahmetvural79/tunr/issues")
+		term.Yellow.Printf("  %d/%d passed\n\n", passed, total)
+		term.Dim.Println("  Help: https://tunr.sh/docs/troubleshooting")
+		term.Dim.Println("  Issue: https://github.com/ahmetvural79/tunr/issues")
 		fmt.Println()
 	}
 

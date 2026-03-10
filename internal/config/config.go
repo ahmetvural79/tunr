@@ -69,10 +69,10 @@ func ConfigDir() (string, error) {
 		} else {
 			home, err := os.UserHomeDir()
 			if err != nil {
-			return "", fmt.Errorf("could not determine home directory: %w", err)
+				return "", fmt.Errorf("could not determine home directory: %w", err)
+			}
+			base = filepath.Join(home, ".config", "tunr")
 		}
-		base = filepath.Join(home, ".config", "tunr")
-	}
 	case "windows":
 		appData := os.Getenv("APPDATA")
 		if appData == "" {

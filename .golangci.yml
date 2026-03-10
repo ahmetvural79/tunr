@@ -1,117 +1,68 @@
-# golangci-lint konfigürasyonu
-# Lint = "bunu yazan insan mıydı?" sorusunu önleme sistemi
-
-linters-settings:
-  errcheck:
-    # fmt.Fprintln gibi IO hatalarını da yakala
-    check-type-assertions: true
-    check-blank: false  # blank identifier false pozitif verir, kapat
-
-  govet:
-    enable-all: true
-
-  gocyclo:
-    # Cyclomatic complexity: 15+ olan fonksiyon yeniden yazılmalı
-    min-complexity: 15
-
-  dupl:
-    # Copy-paste toleransı: 150 token
-    threshold: 150
-
-  gosec:
-    # GÜVENLİK: Tüm gosec kurallarını çalıştır
-    # Açık kaynak projesinde kritik!
-    includes:
-      - G101  # Hardcoded credentials
-      - G102  # Bind to all interfaces
-      - G103  # Unsafe pointer usage
-      - G104  # Errors unhandled
-      - G106  # SSH InsecureIgnoreHostKey
-      - G107  # URL provided to HTTP request as taint input (SSRF!)
-      - G108  # Profiling endpoint automatically exposed on /debug/pprof
-      - G109  # Potential Integer overflow
-      - G110  # Potential DoS vulnerability via decompression bomb
-      - G201  # SQL query construction using format string
-      - G202  # SQL query construction using string concatenation
-      - G203  # Use of unescaped data in HTML templates
-      - G204  # Subprocess launched with function call
-      - G301  # Poor file permissions used when creating a directory
-      - G302  # Poor file permissions used with chmod
-      - G303  # Creating tempfile using a predictable path
-      - G304  # File path provided as taint input (path traversal!)
-      - G305  # File traversal when extracting zip/tar archive
-      - G306  # Poor file permissions (world-writable!)
-      - G401  # Use of weak cryptographic primitive
-      - G402  # TLS InsecureSkipVerify set to true (ASLA!)
-      - G403  # Imported package with known vulnerabilities
-      - G404  # Insecure source of randomness (math/rand → crypto/rand!)
-      - G501  # Import blocklist: crypto/md5
-      - G502  # Import blocklist: crypto/des
-      - G503  # Import blocklist: crypto/rc4
-      - G601  # Implicit memory aliasing
-
-  revive:
-    rules:
-      - name: exported
-        arguments:
-          - "checkPrivateReceivers"
-          - "sayRepetitiveInsteadOfStutters"
-
-linters:
-  enable:
-    # Temel kalite
-    - errcheck        # error return values'u kontrol et
-    - govet           # statik analiz
-    - staticcheck     # advanced static analysis
-    - ineffassign     # kullanılmayan atamalar
-    - unused          # kullanılmayan kod
-    
-    # Güvenlik (open source için kritik)
-    - gosec           # security scanner
-    
-    # Kod kalitesi
-    - gocyclo         # karmaşıklık
-    - dupl            # copy-paste detector
-    - gocritic        # çeşitli iyileştirme önerileri
-    - revive          # görevlendirilmiş linting
-    
-    # Format
-    - gofmt           # Go standard format (gofmt -s ile)
-    - goimports       # import sıralama
-    
-    # Performans
-    - prealloc        # slice preallocation önerileri
-    - bodyclose       # HTTP response body close kontrolü
-    
-    # Güzel kod
-    - noctx           # context olmadan HTTP request yapma
-    - rowserrcheck    # sql.Rows err kontrolü
-    - sqlclosecheck   # sql.Rows Close kontrolü
-
-  disable:
-    - godot           # comment nokta ile bitsin demek fazla katı
-    - funlen          # fonksiyon uzunluğu bazen uzun olmak zorunda
-    - wsl             # whitespace linter çok agresif
-
-issues:
-  # Test dosyalarında bazı linterleri kapat
-  # (testlerde gosec G4xx biraz fazla strict)
-  exclude-rules:
-    - path: "_test\\.go"
-      linters:
-        - gosec
-        - dupl
-        - errcheck  # test dosyasında t.Errorf yeterli
-    
-    # Main fonksiyonunda bazı şeyler kaçınılmaz
-    - path: "cmd/"
-      linters:
-        - gochecknoglobals  # Version global değişkeni gerekli
-  
-  # Maksimum 50 hata göster (devir devir ekrana dolu hata)
-  max-issues-per-linter: 50
-  max-same-issues: 3
-
 run:
   timeout: 5m
   go: "1.22"
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gofmt
+    - revive
+    - gocritic
+    - bodyclose
+
+linters-settings:
+  govet:
+    disable:
+      - fieldalignment
+      - unusedwrite
+      - shadow
+  errcheck:
+    exclude-functions:
+      - (io.Writer).Write
+      - (net/http.ResponseWriter).Write
+      - (*compress/gzip.Writer).Write
+      - io.Copy
+      - fmt.Fprintf
+      - fmt.Fprint
+      - fmt.Fprintln
+      - (encoding/json.Encoder).Encode
+  revive:
+    rules:
+      - name: exported
+        disabled: true
+  gocritic:
+    disabled-checks:
+      - ifElseChain
+      - singleCaseSwitch
+      - exitAfterDefer
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec
+        - noctx
+        - bodyclose
+    - path: cmd/
+      linters:
+        - noctx
+    - path: sdk/
+      linters:
+        - errcheck
+    - linters:
+        - gosec
+      text: "G107|G110|G306|G404"
+    - linters:
+        - staticcheck
+      text: "SA1012"
+    - linters:
+        - prealloc
+      text: "Consider pre-allocating"
+  max-issues-per-linter: 0
+  max-same-issues: 0

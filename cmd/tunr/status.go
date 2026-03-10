@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 
-	"github.com/fatih/color"
 	"github.com/ahmetvural79/tunr/internal/daemon"
 	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/term"
 	"github.com/spf13/cobra"
 )
 
@@ -26,13 +26,9 @@ func newStatusCmd() *cobra.Command {
 				return nil
 			}
 
-			cyan := color.New(color.FgCyan, color.Bold)
-			dim := color.New(color.FgHiBlack)
-			green := color.New(color.FgGreen, color.Bold)
-
 			fmt.Println()
-			cyan.Println("  tunr daemon running")
-			dim.Printf("  PID: %d  Started: %s  Version: %s\n",
+			term.Cyan.Println("  tunr daemon running")
+			term.Dim.Printf("  PID: %d  Started: %s  Version: %s\n",
 				state.PID,
 				state.StartedAt.Format("15:04:05"),
 				state.Version,
@@ -40,13 +36,13 @@ func newStatusCmd() *cobra.Command {
 			fmt.Println()
 
 			if len(state.Tunnels) == 0 {
-				dim.Println("  No active tunnels.")
+				term.Dim.Println("  No active tunnels.")
 			} else {
 				for _, t := range state.Tunnels {
 					fmt.Printf("  %s  :%d  →  %s\n",
-						green.Sprint("●"),
+						term.Green.Sprint("●"),
 						t.LocalPort,
-						color.New(color.FgGreen, color.Underline).Sprint(t.PublicURL),
+						term.URL.Sprint(t.PublicURL),
 					)
 				}
 			}

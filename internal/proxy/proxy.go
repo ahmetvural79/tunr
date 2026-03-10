@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/gorilla/websocket"
 )
 
 // LocalProxy sits between the tunnel and your local dev server,
@@ -30,15 +30,15 @@ type LocalProxy struct {
 	DemoMode     bool
 	InjectWidget bool
 	AutoLogin    string // Cookie injection
-	
+
 	// Advanced Features
-	Password     string // Basic Auth credentials
+	Password string // Basic Auth credentials
 
 	// Traffic stats for the curious
 	mu           sync.RWMutex
 	requestCount int64
 	bytesSent    int64
-	
+
 	// Pre-built middleware chain for hot-path performance
 	handler http.Handler
 }
@@ -129,7 +129,7 @@ func NewLocalProxy(port int, pathRoutes map[string]int) (*LocalProxy, error) {
 		reverseProxy: rp,
 		localURL:     localURL,
 	}
-	
+
 	proxy.handler = rp
 
 	return proxy, nil
@@ -146,6 +146,17 @@ func (p *LocalProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if isWebSocketRequest(r) {
 		p.handleWebSocket(w, r)
 		return
+	}
+
+	if p.InjectWidget && r.Method == http.MethodPost {
+		switch r.URL.Path {
+		case "/__tunr/feedback":
+			p.handleFeedback(w, r)
+			return
+		case "/__tunr/error":
+			p.handleError(w, r)
+			return
+		}
 	}
 
 	// Auto-Login Cookie Injection
@@ -177,7 +188,7 @@ func (p *LocalProxy) BuildMiddlewareChain() {
 	// 1. Freeze Mode (closest to upstream — catches crashes)
 	if p.Freeze != nil && p.Freeze.enabled {
 		h = p.Freeze.Middleware(h)
-		
+
 		// Hijack the error handler so Bad Gateway falls back to cache
 		originalErrorHandler := p.reverseProxy.ErrorHandler
 		p.reverseProxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -215,7 +226,10 @@ func (p *LocalProxy) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	localWsURL.Path = r.URL.Path
 	localWsURL.RawQuery = r.URL.RawQuery
 
-	upstreamConn, _, err := websocket.DefaultDialer.Dial(localWsURL.String(), nil)
+	upstreamConn, wsResp, err := websocket.DefaultDialer.Dial(localWsURL.String(), nil)
+	if wsResp != nil && wsResp.Body != nil {
+		defer wsResp.Body.Close()
+	}
 	if err != nil {
 		logger.Warn("WS upstream connection failed (port %d): %v", p.Port, err)
 		http.Error(w, "websocket upstream unavailable", http.StatusBadGateway)

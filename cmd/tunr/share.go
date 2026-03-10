@@ -8,10 +8,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/ahmetvural79/tunr/internal/auth"
 	"github.com/ahmetvural79/tunr/internal/config"
 	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/term"
 	"github.com/ahmetvural79/tunr/internal/tunnel"
 	"github.com/spf13/cobra"
 )
@@ -145,50 +145,41 @@ Vibecoder Demo Flags (Pro):
 }
 
 func printShareInfo(t *tunnel.Tunnel, port int, opts tunnel.StartOptions) {
-	dim := color.New(color.FgHiBlack)
-	cyan := color.New(color.FgCyan)
-	green := color.New(color.FgGreen)
-
 	fmt.Println()
-	dim.Print("  ")
-	green.Printf("%-6s", "=>")
+	term.Green.Printf("  => ")
 	fmt.Printf("localhost:%d", port)
-	dim.Print("  →  ")
-	cyan.Println(t.PublicURL)
+	term.Dim.Print("  →  ")
+	term.Cyan.Println(t.PublicURL)
 
 	if opts.Domain != "" {
-		dim.Print("  ")
-		green.Printf("%-6s", "=>")
-		cyan.Println("https://" + opts.Domain)
+		term.Green.Printf("  => ")
+		term.Cyan.Println("https://" + opts.Domain)
 	}
 
 	fmt.Println()
 
 	if opts.Password != "" {
-		dim.Printf("  Password:  %s\n", opts.Password)
+		term.Dim.Printf("  Password:  %s\n", opts.Password)
 	}
 	if opts.TTL > 0 {
-		dim.Printf("  Expires:   %s\n", opts.TTL)
+		term.Dim.Printf("  Expires:   %s\n", opts.TTL)
 	}
 	if opts.DemoMode {
-		dim.Println("  Mode:      read-only (POST/PUT/DELETE blocked)")
+		term.Dim.Println("  Mode:      read-only (POST/PUT/DELETE blocked)")
 	}
 	if opts.Freeze {
-		dim.Println("  Freeze:    enabled (cache-on-crash)")
+		term.Dim.Println("  Freeze:    enabled (cache-on-crash)")
 	}
 	if opts.InjectWidget {
-		dim.Println("  Widget:    feedback overlay injected")
+		term.Dim.Println("  Widget:    feedback overlay injected")
 	}
 
 	fmt.Println()
-	dim.Println("  Press Ctrl+C to disconnect")
+	term.Dim.Println("  Press Ctrl+C to disconnect")
 	fmt.Println()
 }
 
 func handleProRequired(port int, subdomain, domain, password string) error {
-	dim := color.New(color.FgHiBlack)
-	red := color.New(color.FgRed)
-
 	var feature string
 	switch {
 	case subdomain != "":
@@ -202,12 +193,12 @@ func handleProRequired(port int, subdomain, domain, password string) error {
 	}
 
 	fmt.Println()
-	red.Printf("  %s requires a Pro subscription.\n", feature)
+	term.Red.Printf("  %s requires a Pro subscription.\n", feature)
 	fmt.Println()
-	dim.Println("  Upgrade at: https://app.tunr.sh/settings/billing")
+	term.Dim.Println("  Upgrade at: https://app.tunr.sh/settings/billing")
 	fmt.Println()
-	dim.Printf("  Free:  tunr share --port %d\n", port)
-	dim.Printf("  Pro:   tunr share --port %d --subdomain myapp\n", port)
+	term.Dim.Printf("  Free:  tunr share --port %d\n", port)
+	term.Dim.Printf("  Pro:   tunr share --port %d --subdomain myapp\n", port)
 	fmt.Println()
 
 	return nil

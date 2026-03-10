@@ -17,8 +17,9 @@ func TestStyleForStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		s := StyleForStatus(tt.status)
-		if s == nil {
-			t.Errorf("%s: got nil style for %d", tt.name, tt.status)
+		result := s.Sprint("test")
+		if result == "" {
+			t.Errorf("%s: got empty output for %d", tt.name, tt.status)
 		}
 	}
 }
@@ -50,5 +51,20 @@ func TestRunStepsSuccess(t *testing.T) {
 	err := RunSteps(steps)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestStyleChaining(t *testing.T) {
+	s := NewStyle("#ffffff").Bold().Underline()
+	result := s.Sprint("hello")
+	if result == "" {
+		t.Error("chained style produced empty output")
+	}
+}
+
+func TestDivider(t *testing.T) {
+	d := Divider(10)
+	if d == "" {
+		t.Error("divider produced empty output")
 	}
 }
