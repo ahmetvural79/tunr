@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tunr-dev/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/logger"
 )
 
 // HTTP Inspector — full-body capture for every request and response.

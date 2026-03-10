@@ -12,9 +12,9 @@
 
 **Local → Public in < 3 seconds.**
 
-[![CI](https://github.com/tunr-dev/tunr/workflows/CI/badge.svg)](https://github.com/tunr-dev/tunr/actions)
-[![Go Report Card](https://goreportcard.com/badge/github.com/tunr-dev/tunr)](https://goreportcard.com/report/github.com/tunr-dev/tunr)
-[![Release](https://img.shields.io/github/v/release/tunr-dev/tunr?color=7c3aed)](https://github.com/tunr-dev/tunr/releases)
+[![CI](https://github.com/ahmetvural79/tunr/workflows/CI/badge.svg)](https://github.com/ahmetvural79/tunr/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ahmetvural79/tunr)](https://goreportcard.com/report/github.com/ahmetvural79/tunr)
+[![Release](https://img.shields.io/github/v/release/ahmetvural79/tunr?color=7c3aed)](https://github.com/ahmetvural79/tunr/releases)
 [![License: PolyForm Shield](https://img.shields.io/badge/License-PolyForm%20Shield%201.0.0-7c3aed.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00add8)](go.mod)
 
@@ -65,7 +65,7 @@ It's a developer-first alternative to ngrok and Cloudflare Tunnel, built in Go a
 
 ```bash
 # macOS (Homebrew) — recommended
-brew install tunr-dev/tap/tunr
+brew install ahmetvural79/tap/tunr
 
 # Linux / macOS (one-liner)
 curl -sSL https://tunr.sh/install | sh
@@ -74,7 +74,7 @@ curl -sSL https://tunr.sh/install | sh
 npx tunr@latest share --port 3000
 
 # Build from source
-git clone https://github.com/tunr-dev/tunr.git
+git clone https://github.com/ahmetvural79/tunr.git
 cd tunr
 go build -o tunr ./cmd/tunr
 ```

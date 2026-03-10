@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tunr-dev/tunr/internal/logger"
-	"github.com/tunr-dev/tunr/internal/proxy"
+	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/proxy"
 )
 
 // TunnelStatus represents where a tunnel is in its lifecycle

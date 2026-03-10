@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/tunr-dev/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +26,7 @@ func newUpdateCmd() *cobra.Command {
 		Short:   "Update tunr to the latest version",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			repo := "tunr-dev/tunr"
+			repo := "ahmetvural79/tunr"
 			dim := color.New(color.FgHiBlack)
 			green := color.New(color.FgGreen)
 

@@ -2,13 +2,12 @@
 /tunr
 /dist/
 
-# Binary'ler ve test artifact'ları
+# Binaries and test artifacts
 *.exe
 *.test
 *.out
 
-# Config ve gizli dosyalar — asla commit etme!
-# (Biri commit ederse PR'ı reddet ve konuş)
+# Config and secret files — never commit these
 *.env
 .env.local
 .env.*.local
@@ -18,8 +17,7 @@ secrets.json
 *.crt
 *.p12
 
-# tunr runtime dosyaları
-# (bunları commit etmek hiçbir işe yaramaz)
+# tunr runtime files
 /tmp/
 /.tunr/
 *.log
@@ -30,7 +28,7 @@ tunr.log
 .AppleDouble
 .LSOverride
 
-# İDE dosyaları - herkes kendi IDE'sini sevebilir
+# IDE files
 .vscode/
 .idea/
 *.swp
@@ -38,12 +36,12 @@ tunr.log
 *~
 .vim/
 
-# Coverage raporları (CI artifact olarak upload edilir)
+# Coverage reports
 coverage.txt
 coverage.html
 *.coverprofile
 
-# Test binary'leri
+# Test binaries
 **/*.test
 
 # goreleaser output
@@ -53,6 +51,9 @@ _build/
 # ── PROPRIETARY / CLOSED SOURCE ─────────────────────────────────────────────
 # The following are NOT part of the open source CLI.
 # They live in private repositories.
+
+# Internal documentation (kept locally, not published to GitHub)
+docs/
 
 # Relay server (proprietary infrastructure)
 relay/

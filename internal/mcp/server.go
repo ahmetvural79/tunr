@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/tunr-dev/tunr/internal/inspector"
-	"github.com/tunr-dev/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/inspector"
+	"github.com/ahmetvural79/tunr/internal/logger"
 )
 
 // MCP (Model Context Protocol) server.

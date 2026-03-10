@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/tunr-dev/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/logger"
 	"github.com/spf13/cobra"
 )
 

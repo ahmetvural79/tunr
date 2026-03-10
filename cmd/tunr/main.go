@@ -13,7 +13,7 @@ func main() {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "\nUnexpected error: %v\n", r)
-			fmt.Fprintln(os.Stderr, "Please report: https://github.com/tunr-dev/tunr/issues")
+			fmt.Fprintln(os.Stderr, "Please report: https://github.com/ahmetvural79/tunr/issues")
 			os.Exit(1)
 		}
 	}()

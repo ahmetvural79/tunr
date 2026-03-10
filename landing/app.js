@@ -280,7 +280,7 @@ document.querySelectorAll(".stat-card").forEach((card, i) => {
 console.log(
   "%c tunr.sh ",
   "background: linear-gradient(135deg, #00d4ff, #7c3aed); color: white; font-weight: bold; padding: 4px 8px; border-radius: 4px;",
-  "\n\nHey there, curious developer! 👋\nWant to peek at the code? → https://github.com/tunr-dev/tunr\nWant to contribute? PRs welcome!"
+  "\n\nHey there, curious developer! 👋\nWant to peek at the code? → https://github.com/ahmetvural79/tunr\nWant to contribute? PRs welcome!"
 );
 
 /* ── Theme Toggle (Light / Dark Mode) ── */

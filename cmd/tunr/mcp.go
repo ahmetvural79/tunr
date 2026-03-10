@@ -4,8 +4,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/tunr-dev/tunr/internal/inspector"
-	"github.com/tunr-dev/tunr/internal/mcp"
+	"github.com/ahmetvural79/tunr/internal/inspector"
+	"github.com/ahmetvural79/tunr/internal/mcp"
 	"github.com/spf13/cobra"
 )
 

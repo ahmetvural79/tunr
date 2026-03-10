@@ -3,12 +3,12 @@
   "displayName": "tunr — Local → Public Tunnel",
   "description": "VS Code'dan direkt tunnel aç, kapat, izle. ngrok'a veda et.",
   "version": "0.1.0",
-  "publisher": "tunr-dev",
+  "publisher": "ahmetvural79",
   "license": "MIT",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tunr-dev/tunr"
+    "url": "https://github.com/ahmetvural79/tunr"
   },
   "engines": {
     "vscode": "^1.85.0"

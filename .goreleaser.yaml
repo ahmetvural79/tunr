@@ -91,7 +91,7 @@ changelog:
 
 release:
   github:
-    owner: tunr-dev
+    owner: ahmetvural79
     name: tunr
   
   # Draft olarak oluştur, manuel confirm et
@@ -105,7 +105,7 @@ release:
     
     ```bash
     # macOS (Homebrew)
-    brew install tunr-dev/tap/tunr
+    brew install ahmetvural79/tap/tunr
     
     # Linux / macOS (curl)
     curl -fsSL https://tunr.sh/install | sh
@@ -119,7 +119,7 @@ release:
 brews:
   - name: tunr
     tap:
-      owner: tunr-dev
+      owner: ahmetvural79
       name: homebrew-tap
     description: "Vibecoder'lar için local → public tunnel aracı"
     homepage: "https://tunr.sh"

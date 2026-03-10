@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tunr-dev/tunr/internal/config"
-	"github.com/tunr-dev/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/config"
+	"github.com/ahmetvural79/tunr/internal/logger"
 	"github.com/spf13/cobra"
 )
 

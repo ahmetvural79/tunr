@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/tunr-dev/tunr/internal/auth"
-	"github.com/tunr-dev/tunr/internal/config"
-	"github.com/tunr-dev/tunr/internal/logger"
-	"github.com/tunr-dev/tunr/internal/tunnel"
+	"github.com/ahmetvural79/tunr/internal/auth"
+	"github.com/ahmetvural79/tunr/internal/config"
+	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/tunnel"
 	"github.com/spf13/cobra"
 )
 

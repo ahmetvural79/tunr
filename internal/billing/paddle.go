@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tunr-dev/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/logger"
 )
 
 // Paddle handles subscription billing.

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tunr-dev/tunr/internal/inspector"
+	"github.com/ahmetvural79/tunr/internal/inspector"
 )
 
 // TestNewInspector — ring buffer initial state

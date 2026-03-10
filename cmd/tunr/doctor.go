@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/tunr-dev/tunr/internal/auth"
-	"github.com/tunr-dev/tunr/internal/config"
-	"github.com/tunr-dev/tunr/internal/daemon"
+	"github.com/ahmetvural79/tunr/internal/auth"
+	"github.com/ahmetvural79/tunr/internal/config"
+	"github.com/ahmetvural79/tunr/internal/daemon"
 	"github.com/spf13/cobra"
 )
 
@@ -119,7 +119,7 @@ func runDoctor() error {
 	} else {
 		warn.Printf("  %d/%d passed\n\n", passed, total)
 		dim.Println("  Help: https://tunr.sh/docs/troubleshooting")
-		dim.Println("  Issue: https://github.com/tunr-dev/tunr/issues")
+		dim.Println("  Issue: https://github.com/ahmetvural79/tunr/issues")
 		fmt.Println()
 	}
 

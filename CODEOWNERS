@@ -7,29 +7,29 @@
 # Syntax: pattern  @kullanıcı-adı veya @organizasyon/takım
 
 # Güvenlik kritik alanlar — çok dikkatli olunmalı
-/internal/auth/           @tunr-dev/security-team
-/SECURITY.md              @tunr-dev/security-team
-/.github/workflows/       @tunr-dev/security-team
+/internal/auth/           @ahmetvural79/security-team
+/SECURITY.md              @ahmetvural79/security-team
+/.github/workflows/       @ahmetvural79/security-team
 
 # Core tunnel logic
-/internal/tunnel/         @tunr-dev/core-team
-/internal/proxy/          @tunr-dev/core-team
+/internal/tunnel/         @ahmetvural79/core-team
+/internal/proxy/          @ahmetvural79/core-team
 
 # Config yönetimi — breaking change riski yüksek
-/internal/config/         @tunr-dev/core-team
+/internal/config/         @ahmetvural79/core-team
 
 # CLI komutları
-/cmd/                     @tunr-dev/core-team
+/cmd/                     @ahmetvural79/core-team
 
 # CI/CD değişiklikleri de önemli
-/.goreleaser.yaml         @tunr-dev/core-team
-/.github/                 @tunr-dev/core-team
+/.goreleaser.yaml         @ahmetvural79/core-team
+/.github/                 @ahmetvural79/core-team
 
 # Doküman — daha hafif ama review yine de iyidir
-/README.md                @tunr-dev/docs-team
-/landing/                 @tunr-dev/design-team
+/README.md                @ahmetvural79/docs-team
+/landing/                 @ahmetvural79/design-team
 
 # go.mod / go.sum — dependency değişikliği
 # (bilen biri baksın lütfen)
-/go.mod                   @tunr-dev/security-team
-/go.sum                   @tunr-dev/security-team
+/go.mod                   @ahmetvural79/security-team
+/go.sum                   @ahmetvural79/security-team

@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/tunr-dev/tunr/internal/daemon"
-	"github.com/tunr-dev/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/daemon"
+	"github.com/ahmetvural79/tunr/internal/logger"
 	"github.com/spf13/cobra"
 )
 

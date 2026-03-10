@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tunr-dev/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/logger"
 )
 
 type cacheEntry struct {
