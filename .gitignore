@@ -60,16 +60,8 @@ relay/
 
 
 
-# Dashboard Next.js app (proprietary SaaS frontend)
-landing/app/
-
-# Legacy dashboard files kept locally only
-landing/admin.html
-landing/admin.css
-landing/admin.js
-landing/dashboard.html
-landing/dashboard.css
-landing/dashboard.js
+# Dashboard + landing page (proprietary — not published to GitHub)
+landing/
 
 # ── SECRETS / CREDENTIALS ────────────────────────────────────────────────────
 # NEVER commit these. Ever.
