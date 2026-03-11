@@ -13,8 +13,9 @@ log "Step 1/7: Detecting platform..."
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 case "$OS" in
-  darwin) OS="darwin" ;;
-  linux)  OS="linux" ;;
+  darwin)  OS="darwin" ;;
+  linux)   OS="linux" ;;
+  mingw*|msys*|cygwin*) OS="windows" ;;
   *)
     echo "Unsupported OS: $OS"
     exit 1
@@ -71,20 +72,44 @@ else
 fi
 
 log "Step 6/7: Extracting archive..."
-tar -xzf "$TMP/$FILENAME" -C "$TMP"
+# Goreleaser puts binaries in subfolder: tunr_0.1.1_os_arch/
+ARCHIVE_DIR="${BINARY}_${VERSION}_${OS}_${ARCH}"
+if [ "$OS" = "windows" ]; then
+  if ! command -v unzip >/dev/null 2>&1; then
+    echo "Error: unzip is required for Windows. Install it or use Git Bash which includes unzip."
+    exit 1
+  fi
+  unzip -o -q "$TMP/$FILENAME" -d "$TMP"
+  BINFILE="$TMP/$ARCHIVE_DIR/${BINARY}.exe"
+else
+  tar -xzf "$TMP/$FILENAME" -C "$TMP"
+  BINFILE="$TMP/$ARCHIVE_DIR/$BINARY"
+fi
 
-if [ -w "$INSTALL_DIR" ]; then
+if [ "$OS" = "windows" ]; then
+  INSTALL_DIR="/usr/local/bin"
   log "Step 7/7: Installing binary to $INSTALL_DIR..."
-  install -m 0755 "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
+  mkdir -p "$INSTALL_DIR"
+  cp "$BINFILE" "$INSTALL_DIR/${BINARY}.exe"
+  chmod +x "$INSTALL_DIR/${BINARY}.exe"
+elif [ -w "$INSTALL_DIR" ]; then
+  log "Step 7/7: Installing binary to $INSTALL_DIR..."
+  install -m 0755 "$BINFILE" "$INSTALL_DIR/$BINARY"
 else
   log "Step 7/7: Installing binary to $INSTALL_DIR (sudo password may be required)..."
-  sudo install -m 0755 "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
+  sudo install -m 0755 "$BINFILE" "$INSTALL_DIR/$BINARY"
+fi
+
+if [ "$OS" = "windows" ]; then
+  EXE="$INSTALL_DIR/${BINARY}.exe"
+else
+  EXE="$INSTALL_DIR/$BINARY"
 fi
 
 log ""
-log "  tunr ${VERSION} installed to ${INSTALL_DIR}/${BINARY}"
+log "  tunr ${VERSION} installed to $EXE"
 log ""
 log "  Get started:"
 log "    tunr share --port 3000"
 log ""
-"$INSTALL_DIR/$BINARY" version
+"$EXE" version
