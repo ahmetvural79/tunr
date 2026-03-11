@@ -3,11 +3,17 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/ahmetvural79/tunr/internal/tunnel"
 )
 
 var Version = "dev"
 var BuildDate = ""
 var Commit = ""
+
+func init() {
+	tunnel.Version = Version
+}
 
 func main() {
 	defer func() {

@@ -2,12 +2,10 @@ package tunnel
 
 import (
 	"context"
-	cryptoRand "crypto/rand"
 	"errors"
 	"fmt"
 	"math"
 	"math/rand"
-	"net/http"
 	"net/url"
 	"time"
 
@@ -121,77 +119,18 @@ func defaultIsRetryable(err error) bool {
 	return true // when in doubt, retry
 }
 
-// RelayClient talks to the tunr relay server.
-// Currently wraps Cloudflare quicktunnel; custom relay coming soon.
-type RelayClient struct {
-	relayURL   string
-	authToken  string // SECURITY: only sent to relay, never logged
-	httpClient *http.Client
-}
-
-// NewRelayClient creates a relay client with sane defaults
-func NewRelayClient(relayURL string, authToken string) *RelayClient {
-	return &RelayClient{
-		relayURL:  relayURL,
-		authToken: authToken, // SECURITY: this field is not exposed outside the struct
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-			Transport: &http.Transport{
-				// SECURITY: TLS verification is always on — no exceptions
-				DisableKeepAlives: false,
-			},
-		},
-	}
-}
-
-// RequestTunnel asks the relay for a fresh public URL
-func (rc *RelayClient) RequestTunnel(ctx context.Context, port int, opts TunnelRequestOptions) (*TunnelResponse, error) {
-	// SECURITY: validate URL to prevent SSRF attacks
-	if err := validateRelayURL(rc.relayURL); err != nil {
-		return nil, fmt.Errorf("invalid relay URL: %w", err)
-	}
-
-	// TODO phase 1: real API call
-	// POST /v1/tunnels
-	// Authorization: Bearer <token>
-	// { "local_port": port, "subdomain": opts.Subdomain }
-	//
-	// For now, fall back to Cloudflare quicktunnel (no token needed, but rate limited)
-	publicURL := fmt.Sprintf("https://%s.trycloudflare.com", generateSubdomain())
-
-	return &TunnelResponse{
-		PublicURL: publicURL,
-		TunnelID:  generateID(),
-		ExpiresAt: time.Now().Add(8 * time.Hour),
-	}, nil
-}
-
-// TunnelRequestOptions configures a tunnel request
-type TunnelRequestOptions struct {
-	Subdomain string // custom subdomain (pro feature)
-	HTTPS     bool
-}
-
-// TunnelResponse is what the relay hands back
-type TunnelResponse struct {
-	PublicURL string    `json:"public_url"`
-	TunnelID  string    `json:"tunnel_id"`
-	ExpiresAt time.Time `json:"expires_at"`
-}
-
-// validateRelayURL ensures the relay URL is safe to call.
-// SECURITY: prevents SSRF — nobody should be able to craft a config that hits internal networks
-func validateRelayURL(rawURL string) error {
+// ValidateRelayURL ensures the relay URL is safe to call.
+// SECURITY: prevents SSRF — nobody should be able to craft a config that hits internal networks.
+func ValidateRelayURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("failed to parse URL: %w", err)
 	}
 
-	if u.Scheme != "https" {
-		return fmt.Errorf("relay must use HTTPS (got scheme: %q)", u.Scheme)
+	if u.Scheme != "https" && u.Scheme != "wss" {
+		return fmt.Errorf("relay must use HTTPS/WSS (got scheme: %q)", u.Scheme)
 	}
 
-	// SECURITY: reject private IP ranges to prevent SSRF
 	host := u.Hostname()
 	if isPrivateHost(host) {
 		return fmt.Errorf("relay must not point to a private IP: %s", host)
@@ -200,7 +139,6 @@ func validateRelayURL(rawURL string) error {
 	return nil
 }
 
-// isPrivateHost checks if the host resolves to a private or loopback address
 func isPrivateHost(host string) bool {
 	privateHosts := []string{
 		"localhost", "127.", "10.", "192.168.",
@@ -219,18 +157,4 @@ func isPrivateHost(host string) bool {
 		}
 	}
 	return false
-}
-
-// generateSubdomain creates a random hex subdomain for quicktunnel
-func generateSubdomain() string {
-	b := make([]byte, 4)
-	_, _ = cryptoRand.Read(b)
-	return fmt.Sprintf("%x", b)
-}
-
-// generateID mints a short random tunnel ID
-func generateID() string {
-	b := make([]byte, 8)
-	_, _ = cryptoRand.Read(b)
-	return fmt.Sprintf("%x", b)[:8]
 }

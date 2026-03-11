@@ -1,10 +1,12 @@
 package tunnel
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,6 +15,9 @@ import (
 	"github.com/ahmetvural79/tunr/internal/proxy"
 	"github.com/google/uuid"
 )
+
+// Version is set by the build system (cmd/tunr/main.go sets this at init).
+var Version = "dev"
 
 // TunnelStatus represents where a tunnel is in its lifecycle
 type TunnelStatus string
@@ -170,50 +175,103 @@ func (m *Manager) Start(ctx context.Context, port int, opts StartOptions) (*Tunn
 	}
 }
 
-// runTunnel is the actual connection loop.
-// Wraps everything in WithRetry so dropped connections auto-reconnect.
+// runTunnel connects to the relay via WebSocket, performs hello/welcome
+// handshake, then enters the request/response loop. Wraps everything in
+// WithRetry so dropped connections auto-reconnect.
 func (m *Manager) runTunnel(ctx context.Context, t *Tunnel, localProxy *proxy.LocalProxy, opts StartOptions) error {
-	localServer := &http.Server{
-		Addr:         fmt.Sprintf("127.0.0.1:%d", t.LocalPort+10000), // offset to avoid port collision
-		Handler:      localProxy,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-	_ = localServer // TODO: wire up in phase 1
-
-	relayClient := NewRelayClient(m.relayURL, m.authToken)
-
 	return WithRetry(ctx, DefaultRetryConfig, func(ctx context.Context, attempt int) error {
 		if attempt > 1 {
 			logger.Info("Reconnecting... (attempt %d)", attempt)
 		}
 
-		resp, err := relayClient.RequestTunnel(ctx, t.LocalPort, TunnelRequestOptions{
-			Subdomain: opts.Subdomain,
-			HTTPS:     opts.HTTPS,
-		})
+		rc, welcome, err := ConnectRelay(ctx, m.relayURL, m.authToken, t.LocalPort, opts.Subdomain, Version)
 		if err != nil {
 			return fmt.Errorf("failed to connect to relay: %w", err)
 		}
 
 		t.mu.Lock()
-		t.PublicURL = resp.PublicURL
+		t.PublicURL = welcome.PublicURL
 		t.Status = StatusActive
 		t.mu.Unlock()
 
-		logger.Info("Tunnel active: localhost:%d → %s", t.LocalPort, resp.PublicURL)
+		logger.Info("Tunnel active: localhost:%d → %s", t.LocalPort, welcome.PublicURL)
 
-		// keep alive until context is cancelled
-		<-ctx.Done()
+		err = rc.RunLoop(ctx, func(_ context.Context, req *requestData) *responseData {
+			t.requestCount.Add(1)
+			return forwardViaProxy(localProxy, t.LocalPort, req)
+		})
 
 		t.mu.Lock()
 		t.Status = StatusDisconnected
 		t.mu.Unlock()
 
-		return nil
+		if err == context.Canceled {
+			return nil
+		}
+		return err
 	})
 }
+
+// forwardViaProxy sends the relay request to the local dev server via
+// the existing LocalProxy (which handles path routing, demo mode, etc.)
+// and returns the response to be sent back to the relay.
+func forwardViaProxy(lp *proxy.LocalProxy, port int, req *requestData) *responseData {
+	bodyReader := strings.NewReader(req.Body)
+	httpReq, err := http.NewRequest(req.Method, fmt.Sprintf("http://localhost:%d%s", port, req.Path), bodyReader)
+	if err != nil {
+		return &responseData{
+			RequestID:  req.RequestID,
+			StatusCode: http.StatusBadGateway,
+			Headers:    map[string]string{"Content-Type": "text/plain"},
+			Body:       "failed to build request: " + err.Error(),
+		}
+	}
+
+	for k, v := range req.Headers {
+		httpReq.Header.Set(k, v)
+	}
+
+	rec := &bufferedResponseWriter{header: http.Header{}, statusCode: http.StatusOK}
+	lp.ServeHTTP(rec, httpReq)
+
+	respHeaders := make(map[string]string, len(rec.header))
+	for k, vals := range rec.header {
+		respHeaders[k] = strings.Join(vals, ", ")
+	}
+
+	return &responseData{
+		RequestID:  req.RequestID,
+		StatusCode: rec.statusCode,
+		Headers:    respHeaders,
+		Body:       rec.body.String(),
+	}
+}
+
+// bufferedResponseWriter captures an HTTP response in memory so we can
+// serialize it back to the relay over WebSocket.
+type bufferedResponseWriter struct {
+	header     http.Header
+	statusCode int
+	body       bytes.Buffer
+	wroteHeader bool
+}
+
+func (w *bufferedResponseWriter) Header() http.Header { return w.header }
+func (w *bufferedResponseWriter) WriteHeader(code int) {
+	if !w.wroteHeader {
+		w.statusCode = code
+		w.wroteHeader = true
+	}
+}
+func (w *bufferedResponseWriter) Write(b []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.body.Write(b)
+}
+
+// Ensure the interface is satisfied at compile time.
+var _ http.ResponseWriter = (*bufferedResponseWriter)(nil)
 
 // Remove stops a tunnel and evicts it from the map
 func (m *Manager) Remove(id string) {
