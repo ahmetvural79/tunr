@@ -14,7 +14,11 @@ func newVersionCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Printf("tunr v%s", Version)
 			if Commit != "" {
-				fmt.Printf(" (%s)", Commit[:min(7, len(Commit))])
+				shortCommit := Commit
+				if len(shortCommit) > 7 {
+					shortCommit = shortCommit[:7]
+				}
+				fmt.Printf(" (%s)", shortCommit)
 			}
 			if BuildDate != "" {
 				fmt.Printf(" built %s", BuildDate)

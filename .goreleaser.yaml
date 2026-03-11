@@ -53,7 +53,7 @@ archives:
       {{ .ProjectName }}_
       {{- .Version }}_
       {{- .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
+      {{- if eq .Arch "amd64" }}amd64
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
     
@@ -118,6 +118,7 @@ release:
 
 brews:
   - name: tunr
+    skip: "{{ eq .Env.HOMEBREW_TAP_TOKEN \"\" }}"  # Token yoksa Homebrew atla
     tap:
       owner: ahmetvural79
       name: homebrew-tap

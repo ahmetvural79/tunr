@@ -351,6 +351,10 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 	return rw.ResponseWriter.Write(b)
 }
 
+func (rw *responseWriter) Header() http.Header {
+	return rw.ResponseWriter.Header()
+}
+
 // PrettyJSON formats a JSON string with indentation for the dashboard
 func PrettyJSON(raw string) string {
 	var v interface{}

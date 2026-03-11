@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/ahmetvural79/tunr/internal/config"
@@ -55,6 +56,9 @@ func TestConfigSaveAndLoad(t *testing.T) {
 // TestConfigSafePermissions — verifies config file is written with 0600 permissions.
 // SECURITY: Other users must not be able to read the config.
 func TestConfigSafePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permission checks do not apply on Windows")
+	}
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test-config.json")
 
