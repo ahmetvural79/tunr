@@ -72,7 +72,7 @@ type RelayConn struct {
 func (rc *RelayConn) writeJSON(v interface{}) error {
 	rc.writeMu.Lock()
 	defer rc.writeMu.Unlock()
-	rc.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	_ = rc.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	return rc.conn.WriteJSON(v)
 }
 
@@ -113,7 +113,7 @@ func ConnectRelay(ctx context.Context, relayURL string, token string, port int, 
 		return nil, nil, fmt.Errorf("failed to send hello: %w", err)
 	}
 
-	conn.SetReadDeadline(time.Now().Add(15 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(15 * time.Second))
 	var welcomeMsg wsMessage
 	if err := conn.ReadJSON(&welcomeMsg); err != nil {
 		conn.Close()
@@ -145,7 +145,7 @@ func ConnectRelay(ctx context.Context, relayURL string, token string, port int, 
 		return nil, nil, fmt.Errorf("invalid welcome payload: %w", err)
 	}
 
-	conn.SetReadDeadline(time.Time{})
+	_ = conn.SetReadDeadline(time.Time{})
 	return rc, &welcome, nil
 }
 

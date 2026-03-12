@@ -250,9 +250,9 @@ func forwardViaProxy(lp *proxy.LocalProxy, port int, req *requestData) *response
 // bufferedResponseWriter captures an HTTP response in memory so we can
 // serialize it back to the relay over WebSocket.
 type bufferedResponseWriter struct {
-	header     http.Header
-	statusCode int
-	body       bytes.Buffer
+	header      http.Header
+	statusCode  int
+	body        bytes.Buffer
 	wroteHeader bool
 }
 

@@ -109,14 +109,14 @@ func (a *UserAPI) handleProfile(w http.ResponseWriter, r *http.Request) {
 	// usage, _ := a.db.GetUsage(r.Context(), userID)
 
 	profile := map[string]interface{}{
-		"user_id":   userID,
-		"email":     email,
-		"plan":      plan,
+		"user_id": userID,
+		"email":   email,
+		"plan":    plan,
 		"limits": map[string]interface{}{
-			"max_tunnels":    DailyRequestLimitByPlan(plan) / 1000,
+			"max_tunnels":      DailyRequestLimitByPlan(plan) / 1000,
 			"requests_per_day": DailyRequestLimitByPlan(plan),
 			"custom_subdomain": plan != "free",
-			"http_inspector":  plan != "free",
+			"http_inspector":   plan != "free",
 		},
 		"usage": map[string]interface{}{
 			"requests_today":  0, // DB'den gelecek
@@ -197,8 +197,8 @@ func (a *UserAPI) handleToken(w http.ResponseWriter, r *http.Request) {
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"token_masked": "prv_••••••••••••••••",
-		"created_at":  time.Now().UTC().Format(time.RFC3339),
-		"last_used":   nil,
+		"created_at":   time.Now().UTC().Format(time.RFC3339),
+		"last_used":    nil,
 	})
 }
 
@@ -243,7 +243,7 @@ func writeAPIError(w http.ResponseWriter, status int, code, message string) {
 func bandwidthLimit(plan string) int64 {
 	switch plan {
 	case "pro":
-		return 50 * 1024 * 1024 * 1024  // 50 GB
+		return 50 * 1024 * 1024 * 1024 // 50 GB
 	case "team":
 		return 500 * 1024 * 1024 * 1024 // 500 GB
 	default:

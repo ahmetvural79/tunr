@@ -33,10 +33,10 @@ type bucket struct {
 
 // Plan bazlı rate limit değerleri (istek/dakika)
 var planLimits = map[string]int{
-	"free":  200,
-	"pro":   2000,
-	"team":  10000,
-	"anon":  50,
+	"free": 200,
+	"pro":  2000,
+	"team": 10000,
+	"anon": 50,
 }
 
 // NewRateLimiter — rate limiter oluştur
@@ -108,8 +108,8 @@ func RateLimitMiddleware(rl *RateLimiter, plan string) func(http.Handler) http.H
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
 				json.NewEncoder(w).Encode(map[string]string{
-					"error": "rate_limit_exceeded",
-					"message": "İstek limitinizi aştınız. 1 dakika bekleyin veya planınızı yükseltin.",
+					"error":       "rate_limit_exceeded",
+					"message":     "İstek limitinizi aştınız. 1 dakika bekleyin veya planınızı yükseltin.",
 					"upgrade_url": "https://tunr.sh/#pricing",
 				})
 				logger.Warn("Rate limit: ip=%s plan=%s", ip, plan)

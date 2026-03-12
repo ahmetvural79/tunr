@@ -47,10 +47,10 @@ const (
 	ActionPlanCancelled  = "plan.cancelled"
 
 	// Güvenlik eylemleri
-	ActionWebhookVerified  = "security.webhook_verified"
-	ActionWebhookRejected  = "security.webhook_rejected"
+	ActionWebhookVerified   = "security.webhook_verified"
+	ActionWebhookRejected   = "security.webhook_rejected"
 	ActionSuspiciousRequest = "security.suspicious_request"
-	ActionRateLimitHit     = "security.rate_limit_hit"
+	ActionRateLimitHit      = "security.rate_limit_hit"
 
 	// Admin eylemleri
 	ActionAdminUserBanned   = "admin.user_banned"
@@ -70,12 +70,12 @@ type Querier interface {
 
 // AuditFilter — filtreleme parametreleri
 type AuditFilter struct {
-	UserID    string
-	Action    string
-	From      time.Time
-	To        time.Time
-	Limit     int
-	Offset    int
+	UserID string
+	Action string
+	From   time.Time
+	To     time.Time
+	Limit  int
+	Offset int
 }
 
 // NewAPIHandler — oluşturucu
@@ -150,7 +150,7 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // WebhookEvent — enterprise müşterilere gönderilen webhook
 // Kendi sistemlerine real-time audit streaming için
 type WebhookEvent struct {
-	EventType string      `json:"event_type"`
-	Event     AuditEvent  `json:"event"`
-	SentAt    time.Time   `json:"sent_at"`
+	EventType string     `json:"event_type"`
+	Event     AuditEvent `json:"event"`
+	SentAt    time.Time  `json:"sent_at"`
 }

@@ -51,8 +51,8 @@ type TunnelResponse struct {
 
 // Registry — thread-safe tunnel kayıt defteri
 type Registry struct {
-	mu      sync.RWMutex
-	tunnels map[string]*TunnelEntry // key: tunnelID
+	mu          sync.RWMutex
+	tunnels     map[string]*TunnelEntry // key: tunnelID
 	bySubdomain map[string]*TunnelEntry // key: subdomain (quick lookup)
 }
 

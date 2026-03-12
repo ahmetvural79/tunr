@@ -28,10 +28,10 @@ import (
 type Provider string
 
 const (
-	ProviderGoogle   Provider = "google"
-	ProviderGitHub   Provider = "github"
+	ProviderGoogle    Provider = "google"
+	ProviderGitHub    Provider = "github"
 	ProviderMicrosoft Provider = "microsoft"
-	ProviderOkta     Provider = "okta"
+	ProviderOkta      Provider = "okta"
 )
 
 // Config — SSO provider yapılandırması
@@ -88,7 +88,7 @@ func (c *Client) AuthURL(state, codeVerifier string) (string, error) {
 		return "https://accounts.google.com/o/oauth2/v2/auth?" + params.Encode(), nil
 
 	case ProviderGitHub:
-		params.Del("code_challenge")       // GitHub PKCE desteklemiyor henüz
+		params.Del("code_challenge")        // GitHub PKCE desteklemiyor henüz
 		params.Del("code_challenge_method") // Ama state koruması var
 		params.Set("scope", "read:org user:email")
 		return "https://github.com/login/oauth/authorize?" + params.Encode(), nil

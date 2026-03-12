@@ -94,10 +94,10 @@ var wsUpgrader = websocket.Upgrader{
 
 // Handler — WebSocket bağlantılarını relay eden ana handler
 type Handler struct {
-	registry  *Registry
-	jwtAuth   *auth.JWTAuth
-	db        *relaydb.DB
-	domain    string // tunr.sh
+	registry *Registry
+	jwtAuth  *auth.JWTAuth
+	db       *relaydb.DB
+	domain   string // tunr.sh
 }
 
 // NewHandler — relay handler oluştur
@@ -122,7 +122,7 @@ func (h *Handler) ServeTunnel(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	// Bağlantı kuralım ama önce hello mesajını bekle
-	conn.SetReadDeadline(time.Now().Add(15 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(15 * time.Second))
 
 	var helloMsg Message
 	if err := conn.ReadJSON(&helloMsg); err != nil || helloMsg.Type != MsgTypeHello {
@@ -172,13 +172,13 @@ func (h *Handler) ServeTunnel(w http.ResponseWriter, r *http.Request) {
 		Subdomain: entry.Subdomain,
 		PublicURL: entry.PublicURL(h.domain),
 	})
-	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	if err := conn.WriteJSON(Message{Type: MsgTypeWelcome, Data: welcomeData}); err != nil {
 		return
 	}
 
 	// Read deadline'ı sıfırla — artık ping/request döngüsüne gireceğiz
-	conn.SetReadDeadline(time.Time{})
+	_ = conn.SetReadDeadline(time.Time{})
 
 	// Ping döngüsü başlat (30 saniyede bir)
 	ctx, cancel := context.WithCancel(r.Context())
@@ -220,7 +220,7 @@ func (h *Handler) ServeTunnel(w http.ResponseWriter, r *http.Request) {
 					Headers:   flattenHeaders(req.Headers),
 					Body:      string(req.Body),
 				})
-				conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 				if err := conn.WriteJSON(Message{Type: MsgTypeRequest, Data: reqData}); err != nil {
 					errCh <- err
 					return
@@ -276,7 +276,7 @@ func (h *Handler) pingLoop(ctx context.Context, conn *websocket.Conn, tunnelID s
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			if err := conn.WriteJSON(Message{Type: MsgTypePing}); err != nil {
 				return
 			}
@@ -287,7 +287,7 @@ func (h *Handler) pingLoop(ctx context.Context, conn *websocket.Conn, tunnelID s
 // writeErr — WS üzerinden hata mesajı gönder
 func writeErr(conn *websocket.Conn, msg string) {
 	data, _ := json.Marshal(map[string]string{"message": msg})
-	conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
+	_ = conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
 	_ = conn.WriteJSON(Message{Type: MsgTypeError, Data: data})
 }
 
