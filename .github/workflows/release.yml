@@ -32,18 +32,20 @@ jobs:
         run: |
           go mod verify
           go test ./...
+          cd relay && go mod verify && go test ./... && cd ..
 
       - name: Security check (non-blocking)
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+          govulncheck ./... 2>&1 | tail -30
+          (cd relay && govulncheck ./...) 2>&1 | tail -20
         continue-on-error: true
 
       - name: goreleaser ile release
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: latest
+          version: v2.14.3
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
