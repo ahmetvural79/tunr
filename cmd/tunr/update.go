@@ -110,7 +110,7 @@ func latestTag(repo string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 
 	loc := resp.Header.Get("Location")
 	if loc == "" {

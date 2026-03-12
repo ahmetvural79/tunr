@@ -35,7 +35,7 @@ Requires the inspector to be running (starts automatically with tunr share).`,
 				if err != nil {
 					return fmt.Errorf("failed to flush logs: %w", err)
 				}
-				resp.Body.Close()
+				defer resp.Body.Close()
 				logger.Info("Logs flushed.")
 				return nil
 			}
@@ -95,7 +95,7 @@ Requires the inspector to be running (starts automatically with tunr share).`,
 						continue
 					}
 					body, _ := io.ReadAll(resp.Body)
-					resp.Body.Close()
+					_ = resp.Body.Close()
 
 					var newReqs []struct {
 						Method   string `json:"method"`

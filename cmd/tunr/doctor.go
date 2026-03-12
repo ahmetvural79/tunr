@@ -49,7 +49,7 @@ func runDoctor() error {
 		if err != nil {
 			return "no connection", false
 		}
-		resp.Body.Close()
+		defer resp.Body.Close()
 		return "", true
 	})
 
@@ -89,7 +89,7 @@ func runDoctor() error {
 		if err != nil {
 			return "unreachable", false
 		}
-		resp.Body.Close()
+		defer resp.Body.Close()
 		if resp.StatusCode == 200 {
 			return "ok", true
 		}
@@ -102,7 +102,7 @@ func runDoctor() error {
 		if err != nil {
 			return "not running", false
 		}
-		resp.Body.Close()
+		defer resp.Body.Close()
 		return "running", true
 	})
 
