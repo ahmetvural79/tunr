@@ -134,21 +134,27 @@ release:
     
     For more: https://tunr.sh/docs
 
-brews:
+# GoReleaser v2: brews deprecated in favor of homebrew_casks (since v2.10)
+homebrew_casks:
   - name: tunr
-    skip: "{{ eq .Env.HOMEBREW_TAP_TOKEN \"\" }}"  # Skip Homebrew if Token is missing
-    tap:
-      owner: ahmetvural79
-      name: homebrew-tap
+    ids:
+      - tunr
     description: "local → public tunnel tool for Vibecoders"
     homepage: "https://tunr.sh"
-    license: "PolyForm-Shield-1.0.0"
-    
-    test: |
-      system "#{bin}/tunr", "version"
-    
-    install: |
-      bin.install "tunr"
+    repository:
+      owner: ahmetvural79
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    skip_upload: "{{ eq .Env.HOMEBREW_TAP_TOKEN \"\" }}"
+    url:
+      verified: "github.com/ahmetvural79/tunr"
+    # Unsigned binary: remove quarantine so macOS allows running
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/tunr"]
+          end
 
 # npm package (In Phase 1)
 # nfpms:
