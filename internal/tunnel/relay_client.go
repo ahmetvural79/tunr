@@ -92,7 +92,10 @@ func ConnectRelay(ctx context.Context, relayURL string, token string, port int, 
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
 	}
-	conn, _, err := dialer.DialContext(ctx, wsURL, headers)
+	conn, resp, err := dialer.DialContext(ctx, wsURL, headers)
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("WebSocket dial failed: %w", err)
 	}

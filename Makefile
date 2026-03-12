@@ -2,9 +2,10 @@ BINARY  := tunr
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -s -w -X main.Version=$(VERSION)
 
-.PHONY: build install clean test lint vet security check all
+.PHONY: build install clean test lint vet security check all pre-push
 
-build:
+pre-push: check build
+	@echo "✓ Pre-push checks passed. Safe to push."
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/tunr
 
 install: build
@@ -18,14 +19,13 @@ test:
 	go test -race -timeout 60s ./...
 
 lint:
-	golangci-lint run --timeout=5m
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.63.0 run --timeout=5m --out-format=colored-line-number ./...
 
 vet:
 	go vet ./...
 
 security:
-	go install golang.org/x/vuln/cmd/govulncheck@latest
-	govulncheck ./...
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 check: vet lint test security
 

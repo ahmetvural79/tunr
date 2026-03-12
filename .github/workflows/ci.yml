@@ -25,10 +25,12 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: v1.61.0
-          args: --timeout=5m --out-format=colored-line-number
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.63.0
+          golangci-lint run --timeout=5m --out-format=colored-line-number ./...
+          if [ -d relay ] && [ -f relay/go.mod ]; then
+            cd relay && golangci-lint run --timeout=5m --out-format=colored-line-number ./...
+          fi
 
   test:
     name: Test (${{ matrix.os }})
