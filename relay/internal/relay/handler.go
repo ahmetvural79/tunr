@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/tunr-dev/tunr/relay/internal/auth"
-	relaydb "github.com/tunr-dev/tunr/relay/internal/db"
-	"github.com/tunr-dev/tunr/relay/internal/logger"
+	"github.com/ahmetvural79/tunr/relay/internal/auth"
+	relaydb "github.com/ahmetvural79/tunr/relay/internal/db"
+	"github.com/ahmetvural79/tunr/relay/internal/logger"
 )
 
 // Handler — relay WebSocket handler.

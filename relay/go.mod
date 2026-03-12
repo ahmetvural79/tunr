@@ -1,4 +1,4 @@
-module github.com/tunr-dev/tunr/relay
+module github.com/ahmetvural79/tunr/relay
 
 go 1.22
 

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tunr-dev/tunr/relay/internal/auth"
-	relaydb "github.com/tunr-dev/tunr/relay/internal/db"
-	"github.com/tunr-dev/tunr/relay/internal/logger"
+	"github.com/ahmetvural79/tunr/relay/internal/auth"
+	relaydb "github.com/ahmetvural79/tunr/relay/internal/db"
+	"github.com/ahmetvural79/tunr/relay/internal/logger"
 )
 
 // contextKey prevents collisions when using context.WithValue (SA1029)

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tunr-dev/tunr/relay/internal/logger"
+	"github.com/ahmetvural79/tunr/relay/internal/logger"
 )
 
 // Proxy — gelen HTTP isteklerini doğru tunnel'a yönlendirir.

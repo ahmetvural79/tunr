@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tunr-dev/tunr/relay/internal/auth"
-	"github.com/tunr-dev/tunr/relay/internal/db"
-	"github.com/tunr-dev/tunr/relay/internal/logger"
-	"github.com/tunr-dev/tunr/relay/internal/relay"
+	"github.com/ahmetvural79/tunr/relay/internal/auth"
+	"github.com/ahmetvural79/tunr/relay/internal/db"
+	"github.com/ahmetvural79/tunr/relay/internal/logger"
+	"github.com/ahmetvural79/tunr/relay/internal/relay"
 )
 
 // tunr relay sunucusu.

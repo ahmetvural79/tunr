@@ -47,23 +47,8 @@ builds:
       - goos: darwin
         goarch: "386"  # macOS 32-bit died in 2010
 
-  - id: tunr-relay
-    main: ./relay/cmd/server
-    binary: tunr-relay
-    
-    ldflags:
-      - -s -w
-      - -X main.Version={{.Version}}
-      
-    env:
-      - CGO_ENABLED=0
-      
-    goos:
-      - linux
-      
-    goarch:
-      - amd64
-      - arm64
+  # tunr-relay is a separate Go module (relay/go.mod) — not built here.
+  # Build and deploy relay on the server: see docs/RELAY_SERVER.md and RELEASE_DEPLOY_TEST_WALKTHROUGH.md
 
 archives:
   - id: tunr
@@ -77,7 +62,7 @@ archives:
     
     format_overrides:
       - goos: windows
-        format: zip  # Windows users want zip, of course
+        formats: [zip]  # Windows users want zip; "format" deprecated in GoReleaser v2
     
     # Extra files for human readability
     files:
