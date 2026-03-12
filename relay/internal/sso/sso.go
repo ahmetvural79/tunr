@@ -231,7 +231,7 @@ func (c *Client) checkGitHubOrg(ctx context.Context, token, org string) bool {
 	if err != nil {
 		return false
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 	return resp.StatusCode == http.StatusNoContent // 204 = üye
 }
 
