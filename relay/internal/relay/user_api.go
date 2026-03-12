@@ -16,7 +16,7 @@ import (
 type contextKey string
 
 const (
-	ctxKeyUserID   contextKey = "user_id"
+	ctxKeyUserID    contextKey = "user_id"
 	ctxKeyUserEmail contextKey = "user_email"
 	ctxKeyUserPlan  contextKey = "user_plan"
 )
