@@ -65,6 +65,7 @@ builds:
 
 archives:
   - id: tunr
+    ids: [tunr]
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -84,6 +85,7 @@ archives:
       - SECURITY.md
 
   - id: tunr-relay
+    ids: [tunr-relay]
     name_template: >-
       tunr-relay_
       {{- .Version }}_
