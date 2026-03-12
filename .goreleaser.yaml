@@ -47,8 +47,21 @@ builds:
       - goos: darwin
         goarch: "386"  # macOS 32-bit died in 2010
 
-  # tunr-relay is a separate Go module (relay/go.mod) — not built here.
-  # Build and deploy relay on the server: see docs/RELAY_SERVER.md and RELEASE_DEPLOY_TEST_WALKTHROUGH.md
+  # Relay: ayrı Go modülü (relay/go.mod) — dir ile relay/ dizininden build ediyoruz
+  - id: tunr-relay
+    dir: relay
+    main: ./cmd/server
+    binary: tunr-relay
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
 
 archives:
   - id: tunr
@@ -69,6 +82,13 @@ archives:
       - README.md
       - LICENSE
       - SECURITY.md
+
+  - id: tunr-relay
+    name_template: >-
+      tunr-relay_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}amd64{{ else }}{{ .Arch }}{{ end }}
 
 checksum:
   name_template: "checksums.txt"

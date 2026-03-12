@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/ahmetvural79/tunr/relay/internal/auth"
 	relaydb "github.com/ahmetvural79/tunr/relay/internal/db"
 	"github.com/ahmetvural79/tunr/relay/internal/logger"
+	"github.com/gorilla/websocket"
 )
 
 // Handler — relay WebSocket handler.
