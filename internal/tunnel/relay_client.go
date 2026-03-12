@@ -122,7 +122,17 @@ func ConnectRelay(ctx context.Context, relayURL string, token string, port int, 
 
 	if welcomeMsg.Type == MsgTypeError {
 		conn.Close()
-		return nil, nil, fmt.Errorf("relay rejected connection: %s", string(welcomeMsg.Data))
+		errMsg := string(welcomeMsg.Data)
+		// Check if the error is related to plan limits or quotas
+		if strings.Contains(strings.ToLower(errMsg), "limit") || strings.Contains(strings.ToLower(errMsg), "quota") || strings.Contains(strings.ToLower(errMsg), "free plan") {
+			logger.Error("\n[!] Tunnel Limit Reached\n")
+			logger.Error("You have reached the maximum number of active tunnels for your current plan.")
+			logger.Error("Please upgrade to Tunr Pro to open more concurrent tunnels.")
+			logger.Error("Upgrade here: https://tunr.sh/dashboard/settings/billing\n")
+		} else {
+			logger.Error("Relay rejected connection: %s", errMsg)
+		}
+		return nil, nil, fmt.Errorf("relay rejected connection: %s", errMsg)
 	}
 	if welcomeMsg.Type != MsgTypeWelcome {
 		conn.Close()

@@ -53,17 +53,10 @@ _build/
 # They live in private repositories.
 
 # Internal documentation (kept locally, not published to GitHub)
-docs/
 
 # Relay server (proprietary infrastructure)
-relay/
-
-
 
 # Dashboard + landing page (proprietary — not published to GitHub)
-landing/
-
-# ── SECRETS / CREDENTIALS ────────────────────────────────────────────────────
 # NEVER commit these. Ever.
 supabase.json
 paddle.json

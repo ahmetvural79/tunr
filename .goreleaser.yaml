@@ -1,6 +1,6 @@
 # .goreleaser.yaml
-# goreleaser ile tek komutla her platformda binary üretiyoruz.
-# "bende çalışıyordu" sorununu binary level'da çözüyoruz.
+# Produce binaries for all platforms using goreleaser with a single command.
+# Solve the "it works on my machine" problem at the binary level.
 
 version: 2
 
@@ -8,28 +8,28 @@ project_name: tunr
 
 before:
   hooks:
-    # Her build öncesi bağımlılıkları kontrol et
+    # Check dependencies before every build
     - go mod tidy
-    - go mod verify  # VERİFY: modüllerin beklenen checksum'larla eşleştiğini doğrula
-    # GÜVENLİK: supply chain saldırılarına karşı önemli
+    - go mod verify  # VERIFY: ensure modules match expected checksums
+    # SECURITY: important against supply chain attacks
 
 builds:
   - id: tunr
     main: ./cmd/tunr
     binary: tunr
     
-    # Build zamanında version inject et
+    # Inject version at build time
     ldflags:
-      - -s -w  # binary'yi küçült (debug sembollerini çıkar)
+      - -s -w  # shrink binary (remove debug symbols)
       - -X main.Version={{.Version}}
       - -X main.BuildDate={{.Date}}
       - -X main.Commit={{.Commit}}
     
-    # CGO kapalı = no system dependencies = "works everywhere"
+    # CGO disabled = no system dependencies = "works everywhere"
     env:
       - CGO_ENABLED=0
     
-    # Tüm hedef platformlar
+    # All target platforms
     goos:
       - linux
       - windows
@@ -38,14 +38,32 @@ builds:
     goarch:
       - amd64
       - arm64
-      - "386"  # 32-bit Linux için (CI sunucular bazen eski olur)
+      - "386"  # for 32-bit Linux (CI servers can sometimes be old)
     
-    # Desteklenmeyen kombinasyonları atla
+    # Skip unsupported combinations
     ignore:
       - goos: windows
-        goarch: arm64  # Windows ARM64 için sonra bakarız
+        goarch: arm64  # Will look into Windows ARM64 later
       - goos: darwin
-        goarch: "386"  # macOS 32-bit diye bir şey 2010'da öldü
+        goarch: "386"  # macOS 32-bit died in 2010
+
+  - id: tunr-relay
+    main: ./relay/cmd/server
+    binary: tunr-relay
+    
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      
+    env:
+      - CGO_ENABLED=0
+      
+    goos:
+      - linux
+      
+    goarch:
+      - amd64
+      - arm64
 
 archives:
   - id: tunr
@@ -59,9 +77,9 @@ archives:
     
     format_overrides:
       - goos: windows
-        format: zip  # Windows kullanıcıları zip ister tabii ki
+        format: zip  # Windows users want zip, of course
     
-    # İnsan okusun diye ek dosyalar
+    # Extra files for human readability
     files:
       - README.md
       - LICENSE
@@ -70,22 +88,22 @@ archives:
 checksum:
   name_template: "checksums.txt"
   algorithm: sha256
-  # GÜVENLİK: her binary'nin SHA256 hash'i
-  # kullanıcılar "bu dosyayı ben mi indirdim?" diye kontrol edebilir
+  # SECURITY: SHA256 hash of every binary
+  # users can verify "did I really download this file?"
 
 signs:
   - artifacts: checksum
-    # TODO: GPG imzalama Faz 1'de eklenecek
-    # cosign ile Sigstore imzalama planlı
+    # TODO: GPG signing to be added in Phase 1
+    # Sigstore signing with cosign is planned
 
 changelog:
   sort: asc
   use: github
   filters:
     exclude:
-      - "^chore:"      # dependency güncellemeleri changelog'u kirletmesin
-      - "^docs:"       # doküman değişiklikleri ayrı
-      - "^test:"       # test değişiklikleri ayrı
+      - "^chore:"      # dependency updates shouldn't pollute the changelog
+      - "^docs:"       # documentation changes are separate
+      - "^test:"       # test changes are separate
       - Merge pull request
       - Merge branch
 
@@ -94,14 +112,14 @@ release:
     owner: ahmetvural79
     name: tunr
   
-  # Draft olarak oluştur, manuel confirm et
-  # (yanlış versiyonu yayınlamak mahcubiyet verir)
+  # Create as Draft, confirm manually
+  # (publishing the wrong version is embarrassing)
   draft: true
   
   name_template: "tunr v{{.Version}}"
   
   footer: |
-    ## Nasıl Kurulur?
+    ## How to Install?
     
     ```bash
     # macOS (Homebrew)
@@ -110,19 +128,19 @@ release:
     # Linux / macOS (curl)
     curl -fsSL https://tunr.sh/install | sh
     
-    # npm (Node.js projeleri için)
+    # npm (For Node.js projects)
     npx tunr@latest share --port 3000
     ```
     
-    Daha fazlası için: https://tunr.sh/docs
+    For more: https://tunr.sh/docs
 
 brews:
   - name: tunr
-    skip: "{{ eq .Env.HOMEBREW_TAP_TOKEN \"\" }}"  # Token yoksa Homebrew atla
+    skip: "{{ eq .Env.HOMEBREW_TAP_TOKEN \"\" }}"  # Skip Homebrew if Token is missing
     tap:
       owner: ahmetvural79
       name: homebrew-tap
-    description: "Vibecoder'lar için local → public tunnel aracı"
+    description: "local → public tunnel tool for Vibecoders"
     homepage: "https://tunr.sh"
     license: "PolyForm-Shield-1.0.0"
     
@@ -132,7 +150,7 @@ brews:
     install: |
       bin.install "tunr"
 
-# npm paketi (Faz 1'de)
+# npm package (In Phase 1)
 # nfpms:
 #   - package_name: tunr
 #     ...
