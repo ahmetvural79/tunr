@@ -107,7 +107,7 @@ func RateLimitMiddleware(rl *RateLimiter, plan string) func(http.Handler) http.H
 				w.Header().Set("Retry-After", "60")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
-				json.NewEncoder(w).Encode(map[string]string{
+				_ = json.NewEncoder(w).Encode(map[string]string{
 					"error":       "rate_limit_exceeded",
 					"message":     "İstek limitinizi aştınız. 1 dakika bekleyin veya planınızı yükseltin.",
 					"upgrade_url": "https://tunr.sh/#pricing",
@@ -172,11 +172,12 @@ func DailyRequestLimitByPlan(plan string) int {
 // Kullanım: router.Handle("/api/custom-subdomain", RequireProFeature(handler))
 func RequireProFeature(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		plan := r.Context().Value("user_plan")
-		if plan == nil || plan.(string) == "free" || plan.(string) == "anon" {
+		planVal := r.Context().Value(ctxKeyUserPlan)
+		plan, _ := planVal.(string)
+		if plan == "" || plan == "free" || plan == "anon" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusPaymentRequired)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"error":       "pro_required",
 				"message":     "Bu özellik Pro veya Team planı gerektirir.",
 				"upgrade_url": "https://tunr.sh/#pricing",

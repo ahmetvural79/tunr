@@ -12,6 +12,15 @@ import (
 	"github.com/tunr-dev/tunr/relay/internal/logger"
 )
 
+// contextKey prevents collisions when using context.WithValue (SA1029)
+type contextKey string
+
+const (
+	ctxKeyUserID   contextKey = "user_id"
+	ctxKeyUserEmail contextKey = "user_email"
+	ctxKeyUserPlan  contextKey = "user_plan"
+)
+
 // UserAPI — /api/user/* endpoint'leri
 //
 // Tüm endpoint'ler JWT authentication gerektirir.
@@ -85,9 +94,9 @@ func (a *UserAPI) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Context'e user bilgisi ekle
-		ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
-		ctx = context.WithValue(ctx, "user_email", claims.Email)
-		ctx = context.WithValue(ctx, "user_plan", plan)
+		ctx := context.WithValue(r.Context(), ctxKeyUserID, claims.UserID)
+		ctx = context.WithValue(ctx, ctxKeyUserEmail, claims.Email)
+		ctx = context.WithValue(ctx, ctxKeyUserPlan, plan)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -101,9 +110,9 @@ func (a *UserAPI) handleProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.Context().Value("user_id").(string)
-	email := r.Context().Value("user_email").(string)
-	plan := r.Context().Value("user_plan").(string)
+	userID := r.Context().Value(ctxKeyUserID).(string)
+	email := r.Context().Value(ctxKeyUserEmail).(string)
+	plan := r.Context().Value(ctxKeyUserPlan).(string)
 
 	// TODO: DB'den kullanım verisi çek
 	// usage, _ := a.db.GetUsage(r.Context(), userID)
@@ -128,7 +137,7 @@ func (a *UserAPI) handleProfile(w http.ResponseWriter, r *http.Request) {
 
 	logger.Info("User profile request: user=%s plan=%s", userID, plan)
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(profile)
+	_ = json.NewEncoder(w).Encode(profile)
 }
 
 // GET /api/user/tunnels
@@ -138,7 +147,7 @@ func (a *UserAPI) handleTunnels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.Context().Value("user_id").(string)
+	userID := r.Context().Value(ctxKeyUserID).(string)
 
 	// TODO: Registry'den o kullanıcının aktif tünellerini al
 	// tunnels := a.registry.GetByUser(userID)
@@ -148,7 +157,7 @@ func (a *UserAPI) handleTunnels(w http.ResponseWriter, r *http.Request) {
 		// Şimdilik boş — registry entegrasyonu sonraki fazda
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"tunnels": tunnels,
 		"count":   len(tunnels),
 	})
@@ -161,7 +170,7 @@ func (a *UserAPI) handleUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plan := r.Context().Value("user_plan").(string)
+	plan := r.Context().Value(ctxKeyUserPlan).(string)
 
 	usage := map[string]interface{}{
 		"period": time.Now().Format("2006-01"),
@@ -180,7 +189,7 @@ func (a *UserAPI) handleUsage(w http.ResponseWriter, r *http.Request) {
 		"reset_at": nextMonthStart(),
 	}
 
-	json.NewEncoder(w).Encode(usage)
+	_ = json.NewEncoder(w).Encode(usage)
 }
 
 // GET /api/user/token
@@ -190,12 +199,12 @@ func (a *UserAPI) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.Context().Value("user_id").(string)
+	userID := r.Context().Value(ctxKeyUserID).(string)
 
 	// TODO: DB'den token al (sadece masked)
 	_ = userID
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"token_masked": "prv_••••••••••••••••",
 		"created_at":   time.Now().UTC().Format(time.RFC3339),
 		"last_used":    nil,
@@ -209,9 +218,9 @@ func (a *UserAPI) handleTokenRotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.Context().Value("user_id").(string)
-	email := r.Context().Value("user_email").(string)
-	plan := r.Context().Value("user_plan").(string)
+	userID := r.Context().Value(ctxKeyUserID).(string)
+	email := r.Context().Value(ctxKeyUserEmail).(string)
+	plan := r.Context().Value(ctxKeyUserPlan).(string)
 
 	// Yeni token üret
 	newToken, err := a.jwtAuth.Issue(userID, email, plan)
@@ -223,7 +232,7 @@ func (a *UserAPI) handleTokenRotate(w http.ResponseWriter, r *http.Request) {
 	// TODO: DB'ye yeni token hash'i kaydet, eskiyi geçersiz kıl
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"token":      newToken, // Tek seferlik gösterim, sonra masked
 		"created_at": time.Now().UTC().Format(time.RFC3339),
 		"message":    "Eski token artık geçersizdir. Bu tokeni güvenli saklayın.",
@@ -234,7 +243,7 @@ func (a *UserAPI) handleTokenRotate(w http.ResponseWriter, r *http.Request) {
 
 func writeAPIError(w http.ResponseWriter, status int, code, message string) {
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"error":   code,
 		"message": message,
 	})

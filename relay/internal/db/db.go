@@ -120,7 +120,7 @@ func (db *DB) ConsumeMagicToken(ctx context.Context, token string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var email string
 	var usedAt *time.Time

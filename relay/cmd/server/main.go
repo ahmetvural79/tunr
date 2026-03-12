@@ -174,7 +174,7 @@ func handleMagicRequest(database *db.DB, _ *auth.JWTAuth, domain string) http.Ha
 		logger.Info("Magic link: %s", magicLink)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"message": "Magic link e-posta adresinize gönderildi",
 			"email":   req.Email,
 			// GÜVENLİK: production'da link'i response'a ekleme!
@@ -227,7 +227,7 @@ func handleMagicVerify(database *db.DB, jwtAuth *auth.JWTAuth) http.HandlerFunc 
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"token":   jwt,
 			"user_id": userID,
 			"email":   email,
@@ -240,14 +240,14 @@ func handleMagicVerify(database *db.DB, jwtAuth *auth.JWTAuth) http.HandlerFunc 
 func handleStatus(registry *relay.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(registry.Stats())
+		_ = json.NewEncoder(w).Encode(registry.Stats())
 	}
 }
 
 func handleHealth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":    "ok",
 			"timestamp": time.Now().Unix(),
 		})
