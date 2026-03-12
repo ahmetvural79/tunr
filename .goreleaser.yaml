@@ -98,10 +98,10 @@ checksum:
   # SECURITY: SHA256 hash of every binary
   # users can verify "did I really download this file?"
 
-signs:
-  - artifacts: checksum
-    # TODO: GPG signing to be added in Phase 1
-    # Sigstore signing with cosign is planned
+# signs:
+#   - artifacts: checksum
+#     # TODO: GPG signing to be added in Phase 1
+#     # Sigstore signing with cosign is planned
 
 changelog:
   sort: asc
