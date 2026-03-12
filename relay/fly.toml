@@ -1,0 +1,53 @@
+# fly.toml — tunr relay sunucusu için Fly.io deploy konfigürasyonu
+# Deploy: fly deploy --config relay/fly.toml
+
+app = "tunr-relay"
+primary_region = "ams"  # Amsterdam — Türkiye'ye en yakın EU bölgesi
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TUNR_DOMAIN   = "tunr.sh"
+  PORT           = "8080"
+  # TUNR_JWT_SECRET ve DATABASE_URL secrets olarak set edilmeli:
+  # fly secrets set TUNR_JWT_SECRET="your-32-char-secret-here"
+  # fly secrets set DATABASE_URL="postgres://..."
+
+[http_service]
+  internal_port = 8080
+  force_https   = true       # HTTP → HTTPS otomatik redirect
+  auto_stop_machines  = false  # relay her zaman aktif olmalı
+  auto_start_machines = true
+  min_machines_running = 1   # en az 1 makine daima açık
+
+  # *.tunr.sh wildcard subdomain — tüm tunnel'lar buraya gelir
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/v1/health"
+    timeout = "5s"
+
+[[vm]]
+  memory = "512mb"   # relay için yeterli
+  cpu_kind = "shared"
+  cpus = 1
+
+# Ölçeklendirme: birden fazla bölge eklenirse:
+# [[regions]]
+#   name = "sea"   # Seattle
+# [[regions]]
+#   name = "sin"   # Singapore
+
+[mounts]
+  # Persistent volume gerekmez — stateless relay + PostgreSQL
+
+# WebSocket için özel timeout (varsayılan 30s çok kısa)
+[http_service.concurrency]
+  type = "requests"
+  hard_limit = 1000   # max 1000 eş zamanlı WebSocket bağlantısı
+  soft_limit = 800
+
+# Çoklu bölge için anycast (Faz 6):
+# fly regions add fra sin sea

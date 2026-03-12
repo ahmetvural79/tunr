@@ -1,0 +1,99 @@
+# Caddyfile — tunr.sh reverse proxy + TLS otomasyonu
+# Caddy, Let's Encrypt TLS sertifikalarını otomatik alır ve yeniler.
+# Wildcard *.tunr.sh için DNS challenge gerektirir.
+#
+# Kullanım: caddy run --config Caddyfile
+#
+# GÜVENLİK:
+#   - HSTS header otomatik
+#   - HTTP → HTTPS otomatik redirect
+#   - TLS 1.2+ zorunlu (TLS 1.0/1.1 devre dışı)
+#   - OCSP stapling aktif
+
+# Global ayarlar
+{
+    # Let's Encrypt için email
+    email admin@tunr.sh
+
+    # Staging ortamı için (gerçek sertifika almak yerine test):
+    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+
+    # Log formatı
+    log {
+        format json
+        level  INFO
+    }
+}
+
+# Ana domain — landing page + API
+tunr.sh, www.tunr.sh {
+    # Statik landing page dosyaları
+    root * /var/www/tunr/landing
+    file_server
+
+    # API isteklerini relay'e proxy'le
+    handle /api/* {
+        reverse_proxy localhost:8080
+    }
+
+    # Tunnel bağlantısı
+    handle /tunnel/* {
+        reverse_proxy localhost:8080 {
+            # WebSocket için upgrade header
+            header_up Upgrade {>Upgrade}
+            header_up Connection {>Connection}
+        }
+    }
+
+    # Auth endpoints
+    handle /auth/* {
+        reverse_proxy localhost:8080
+    }
+
+    # Security headers
+    header {
+        # HSTS: 1 yıl, subdomain dahil, preload
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        # Content Security Policy — landing page için
+        Content-Security-Policy   "default-src 'self' https://fonts.googleapis.com https://cdn.paddle.com; script-src 'self' 'unsafe-inline' https://cdn.paddle.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:"
+        # Server bilgisi gizle
+        -Server
+    }
+}
+
+# Wildcard subdomain — tunnel'lar için
+# Not: Bu için DNS challenge gerekir (HTTP challenge *.domain için çalışmaz)
+# Fly.io üzerinde zaten TLS handle ediliyor, Caddy sadece routing yapar
+*.tunr.sh {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+
+    # Tüm istekleri relay sunucusuna proxy'le
+    reverse_proxy localhost:8080 {
+        # Host header'ı koru (subdomain routing için şart)
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto https
+
+        # WebSocket desteği
+        header_up Upgrade {>Upgrade}
+        header_up Connection {>Connection}
+
+        # Tunnel response'lar yavaş olabilir — timeout'ı uzat
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 60s
+        }
+    }
+
+    # Wildcard için minimal security headers (tunnel içeriği kontrol edilemez)
+    header {
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
+}
