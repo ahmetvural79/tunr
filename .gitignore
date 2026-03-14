@@ -58,6 +58,11 @@ docs/
 # Relay server (proprietary infrastructure)
 relay/migrations/
 
+# Freemium / internal — keep locally, do not publish
+.tunr.schema.json
+CODEOWNERS
+scripts/
+
 # Dashboard + landing page (proprietary — not published to GitHub)
 landing/
 
