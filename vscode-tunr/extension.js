@@ -1,6 +1,6 @@
 // tunr VS Code Extension
-// Tunnel'ları doğrudan editörden yönetin.
-// Status bar'da URL görür, tıklarsınız, kopyalanır. Basit ve güzel.
+// Manage tunnels directly from your editor.
+// The status bar shows the URL and lets you copy it.
 
 const vscode = require('vscode');
 const { execFile, spawn } = require('child_process');
@@ -14,16 +14,16 @@ let requestProvider = null;
 let pollTimer = null;
 
 /**
- * Extension aktivasyonu
+ * Extension activation
  * @param {vscode.ExtensionContext} context 
  */
 function activate(context) {
-    console.log('tunr extension aktif!');
+    console.log('tunr extension active!');
 
     // Status bar item
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     statusBarItem.command = 'tunr.copyURL';
-    statusBarItem.tooltip = 'tunr tunnel — tıkla URL\'yi kopyala';
+    statusBarItem.tooltip = "tunr tunnel — click to copy URL";
     updateStatusBar('idle');
     statusBarItem.show();
 
@@ -34,7 +34,7 @@ function activate(context) {
     vscode.window.registerTreeDataProvider('tunr.tunnelView', tunnelProvider);
     vscode.window.registerTreeDataProvider('tunr.requestView', requestProvider);
 
-    // Komutları kaydet
+    // Register commands
     const commands = [
         vscode.commands.registerCommand('tunr.share', cmdShare),
         vscode.commands.registerCommand('tunr.stop', cmdStop),
@@ -46,13 +46,13 @@ function activate(context) {
     commands.forEach(c => context.subscriptions.push(c));
     context.subscriptions.push(statusBarItem);
 
-    // Config'e göre autoStart
+    // Auto-start based on config
     const config = vscode.workspace.getConfiguration('tunr');
     if (config.get('autoStart') && config.get('defaultPort')) {
         startTunnel(config.get('defaultPort'));
     }
 
-    // Polling — dashboard'dan tünel listesi al
+    // Poll tunnel list from dashboard
     startPolling();
 }
 
@@ -62,13 +62,13 @@ async function cmdShare() {
     const config = vscode.workspace.getConfiguration('tunr');
     const defaultPort = config.get('defaultPort', 3000);
 
-    // Port'u kullanıcıdan sor
+    // Ask the user for a port
     const portInput = await vscode.window.showInputBox({
-        prompt: 'Hangi port\'u paylaşmak istiyorsunuz?',
+        prompt: "Which port do you want to share?",
         value: String(defaultPort),
         validateInput: (v) => {
             const n = parseInt(v, 10);
-            return (n >= 1024 && n <= 65535) ? null : '1024-65535 arası bir port girin';
+            return (n >= 1024 && n <= 65535) ? null : "Enter a port between 1024 and 65535";
         },
     });
 
@@ -81,18 +81,18 @@ async function cmdShare() {
 async function startTunnel(port) {
     if (activeTunnel) {
         const stop = await vscode.window.showWarningMessage(
-            `Port ${activeTunnel.port} zaten aktif. Önce durdurun.`,
-            'Durdur ve Yeni Aç',
-            'İptal',
+            `Port ${activeTunnel.port} is already active. Stop it first.`,
+            "Stop and Start New",
+            "Cancel",
         );
-        if (stop !== 'Durdur ve Yeni Aç') return;
+        if (stop !== "Stop and Start New") return;
         await cmdStop();
     }
 
     const binary = getBinaryPath();
 
     updateStatusBar('connecting', port);
-    vscode.window.showInformationMessage(`⌛ Tunnel başlatılıyor (port ${port})...`);
+    vscode.window.showInformationMessage(`⌛ Starting tunnel (port ${port})...`);
 
     // tunr share --port X --no-open
     const proc = spawn(binary, ['share', '--port', String(port), '--no-open'], {
@@ -103,7 +103,7 @@ async function startTunnel(port) {
 
     proc.stdout.on('data', (data) => {
         const text = data.toString();
-        // URL'yi stdout'tan parse et
+        // Parse URL from stdout
         const match = text.match(/https?:\/\/[^\s]+tunr\.dev[^\s]*/);
         if (match && !urlFound) {
             urlFound = true;
@@ -111,14 +111,15 @@ async function startTunnel(port) {
             activeTunnel = { id: generateID(), url, port, process: proc };
             updateStatusBar('active', port, url);
 
-            // Bildirim göster
+            // Show notification
             vscode.window.showInformationMessage(
-                `✅ Tunnel aktif! ${url}`,
-                '📋 Kopyala', '🌐 Aç',
+                `✅ Tunnel active! ${url}`,
+                "📋 Copy",
+                "🌐 Open",
             ).then(action => {
-                if (action === '📋 Kopyala') {
+                if (action === "📋 Copy") {
                     vscode.env.clipboard.writeText(url);
-                } else if (action === '🌐 Aç') {
+                } else if (action === "🌐 Open") {
                     vscode.env.openExternal(vscode.Uri.parse(url));
                 }
             });
@@ -129,18 +130,18 @@ async function startTunnel(port) {
 
     proc.stderr.on('data', (data) => {
         const text = data.toString();
-        // tunr stderr'e log yazar, bilgi amaçlı göster
+        // tunr writes logs to stderr; show for visibility
         console.log('[tunr]', text.trim());
 
-        // URL stderr'de de olabilir
+        // URL may also appear on stderr
         const match = text.match(/https?:\/\/[^\s]+tunr\.dev[^\s]*/);
         if (match && !urlFound) {
             urlFound = true;
             const url = match[0];
             activeTunnel = { id: generateID(), url, port, process: proc };
             updateStatusBar('active', port, url);
-            vscode.window.showInformationMessage(`✅ Tunnel aktif: ${url}`, '📋 Kopyala').then(a => {
-                if (a === '📋 Kopyala') vscode.env.clipboard.writeText(url);
+            vscode.window.showInformationMessage(`✅ Tunnel active: ${url}`, "📋 Copy").then(a => {
+                if (a === "📋 Copy") vscode.env.clipboard.writeText(url);
             });
             tunnelProvider?.refresh();
         }
@@ -152,15 +153,15 @@ async function startTunnel(port) {
             updateStatusBar('idle');
             tunnelProvider?.refresh();
             if (code !== 0) {
-                vscode.window.showErrorMessage(`tunr tunnel kapandı (exit ${code}). 'tunr doctor' çalıştırın.`);
+                vscode.window.showErrorMessage(`tunr tunnel stopped (exit ${code}). Run 'tunr doctor'.`);
             }
         }
     });
 
-    // 15s içinde URL gelmezse hata ver
+    // Show error if URL is not discovered within 15s
     setTimeout(() => {
         if (!urlFound && activeTunnel?.process === proc) {
-            vscode.window.showErrorMessage('Tunnel 15 saniyede başlamadı. tunr doctor çalıştırın.');
+            vscode.window.showErrorMessage("Tunnel did not start within 15 seconds. Run 'tunr doctor'.");
             proc.kill();
             activeTunnel = null;
             updateStatusBar('idle');
@@ -170,7 +171,7 @@ async function startTunnel(port) {
 
 async function cmdStop() {
     if (!activeTunnel) {
-        vscode.window.showInformationMessage('Aktif tunnel yok.');
+        vscode.window.showInformationMessage("No active tunnel.");
         return;
     }
 
@@ -179,18 +180,18 @@ async function cmdStop() {
     activeTunnel = null;
     updateStatusBar('idle');
     tunnelProvider?.refresh();
-    vscode.window.showInformationMessage(`Tunnel kapatıldı (port ${port}, ${url})`);
+    vscode.window.showInformationMessage(`Tunnel stopped (port ${port}, ${url})`);
 }
 
 function cmdStatus() {
     if (!activeTunnel) {
-        vscode.window.showInformationMessage('Aktif tunnel yok. tunr.share ile başlatın.');
+        vscode.window.showInformationMessage("No active tunnel. Start one with tunr.share.");
         return;
     }
     vscode.window.showInformationMessage(
-        `✅ Tunnel aktif\nPort: ${activeTunnel.port}\nURL: ${activeTunnel.url}`,
-        '📋 Kopyala'
-    ).then(a => { if (a === '📋 Kopyala') vscode.env.clipboard.writeText(activeTunnel.url); });
+        `✅ Tunnel active\nPort: ${activeTunnel.port}\nURL: ${activeTunnel.url}`,
+        "📋 Copy"
+    ).then(a => { if (a === "📋 Copy") vscode.env.clipboard.writeText(activeTunnel.url); });
 }
 
 function cmdOpenDashboard() {
@@ -201,11 +202,11 @@ function cmdOpenDashboard() {
 
 function cmdCopyURL() {
     if (!activeTunnel) {
-        vscode.window.showInformationMessage('Kopyalanacak URL yok. Önce tunnel başlatın.');
+        vscode.window.showInformationMessage("No URL to copy. Start a tunnel first.");
         return;
     }
     vscode.env.clipboard.writeText(activeTunnel.url);
-    vscode.window.showInformationMessage('URL kopyalandı! ' + activeTunnel.url);
+    vscode.window.showInformationMessage("URL copied! " + activeTunnel.url);
 }
 
 // ── STATUS BAR ────────────────────────────────────────────────────────────
@@ -215,15 +216,15 @@ function updateStatusBar(state, port, url) {
         case 'idle':
             statusBarItem.text = '$(broadcast) tunr';
             statusBarItem.backgroundColor = undefined;
-            statusBarItem.tooltip = 'tunr — tunnel yok. Tıkla veya tunr.share çalıştır.';
+            statusBarItem.tooltip = "tunr — no active tunnel. Click or run tunr.share.";
             break;
         case 'connecting':
             statusBarItem.text = `$(loading~spin) tunr :${port}`;
-            statusBarItem.tooltip = `Bağlanıyor... (port ${port})`;
+            statusBarItem.tooltip = `Connecting... (port ${port})`;
             break;
         case 'active':
-            statusBarItem.text = `$(broadcast) :${port} → aktif`;
-            statusBarItem.tooltip = `Tunnel aktif: ${url}\nTıkla URL'yi kopyala`;
+            statusBarItem.text = `$(broadcast) :${port} → active`;
+            statusBarItem.tooltip = `Tunnel active: ${url}\nClick to copy URL`;
             statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.prominentBackground');
             break;
     }
@@ -245,16 +246,16 @@ class TunnelTreeProvider {
         if (element) return [];
 
         if (!activeTunnel) {
-            return [new vscode.TreeItem('Aktif tunnel yok', vscode.TreeItemCollapsibleState.None)];
+            return [new vscode.TreeItem("No active tunnel", vscode.TreeItemCollapsibleState.None)];
         }
 
         const item = new vscode.TreeItem(
-            `$(broadcast) :${activeTunnel.port} → aktif`,
+            `$(broadcast) :${activeTunnel.port} → active`,
             vscode.TreeItemCollapsibleState.None
         );
         item.description = activeTunnel.url;
         item.tooltip = `URL: ${activeTunnel.url}\nPort: ${activeTunnel.port}`;
-        item.command = { command: 'tunr.copyURL', title: 'URL Kopyala' };
+        item.command = { command: "tunr.copyURL", title: "Copy URL" };
         return [item];
     }
 }
@@ -275,14 +276,14 @@ class RequestTreeProvider {
 
     getChildren() {
         if (!this.requests.length) {
-            return [new vscode.TreeItem('Henüz istek yok', vscode.TreeItemCollapsibleState.None)];
+            return [new vscode.TreeItem("No requests yet", vscode.TreeItemCollapsibleState.None)];
         }
 
         return this.requests.slice(0, 20).map(r => {
             const label = `${r.method} ${r.path}`;
             const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
             item.description = `${r.status_code} • ${r.duration_ms}ms`;
-            item.tooltip = `${r.method} ${r.path}\nStatus: ${r.status_code}\nSüre: ${r.duration_ms}ms`;
+            item.tooltip = `${r.method} ${r.path}\nStatus: ${r.status_code}\nDuration: ${r.duration_ms}ms`;
             return item;
         });
     }
@@ -299,7 +300,7 @@ function generateID() {
     return Math.random().toString(36).slice(2, 10);
 }
 
-// Dashboard'dan son istekleri al
+// Pull latest requests from dashboard
 function startPolling() {
     pollTimer = setInterval(() => {
         if (!activeTunnel) return;
@@ -316,7 +317,7 @@ function startPolling() {
                     requestProvider?.refresh(parsed.requests || []);
                 } catch { }
             });
-        }).on('error', () => { }); // dashboard çalışmıyorsa sessizce geç
+        }).on('error', () => { }); // Silently skip if dashboard is unavailable
     }, 3000);
 }
 

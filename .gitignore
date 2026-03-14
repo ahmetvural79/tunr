@@ -56,6 +56,7 @@ _build/
 docs/
 
 # Relay server (proprietary infrastructure)
+relay/migrations/
 
 # Dashboard + landing page (proprietary — not published to GitHub)
 landing/

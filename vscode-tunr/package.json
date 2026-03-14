@@ -1,7 +1,7 @@
 {
   "name": "vscode-tunr",
   "displayName": "tunr — Local → Public Tunnel",
-  "description": "VS Code'dan direkt tunnel aç, kapat, izle. ngrok'a veda et.",
+  "description": "Open, stop, and monitor tunnels directly from VS Code. Say goodbye to ngrok.",
   "version": "0.1.0",
   "publisher": "ahmetvural79",
   "license": "MIT",
@@ -53,22 +53,22 @@
         "tunr.defaultPort": {
           "type": "number",
           "default": 3000,
-          "description": "Tunnel açılırken kullanılacak varsayılan port"
+          "description": "Default port used when opening a tunnel"
         },
         "tunr.autoStart": {
           "type": "boolean",
           "default": false,
-          "description": "VS Code açılırken tunnel'ı otomatik başlat"
+          "description": "Automatically start a tunnel when VS Code opens"
         },
         "tunr.binaryPath": {
           "type": "string",
           "default": "tunr",
-          "description": "tunr binary'sinin tam yolu (PATH'te yoksa belirtin)"
+          "description": "Absolute path to the tunr binary (set this if not in PATH)"
         },
         "tunr.dashboardPort": {
           "type": "number",
           "default": 19842,
-          "description": "Dashboard/inspector portu"
+          "description": "Dashboard/inspector port"
         }
       }
     },
@@ -85,12 +85,12 @@
       "tunr-sidebar": [
         {
           "id": "tunr.tunnelView",
-          "name": "Aktif Tunnel'lar",
+          "name": "Active Tunnels",
           "when": "true"
         },
         {
           "id": "tunr.requestView",
-          "name": "Son İstekler",
+          "name": "Recent Requests",
           "when": "true"
         }
       ]
