@@ -65,7 +65,7 @@ Vibecoder Demo Flags (Pro):
 
 			token, _ := auth.GetToken()
 
-			mgr := tunnel.NewManager("https://relay.tunr.sh")
+			mgr := tunnel.NewManager(relayURL())
 			mgr.SetAuthToken(token)
 
 			logger.Info("Starting tunnel (port %d)...", port)

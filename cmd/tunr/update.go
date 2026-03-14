@@ -26,12 +26,13 @@ func newUpdateCmd() *cobra.Command {
 		Short:   "Update tunr to the latest version",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			repo := "ahmetvural79/tunr"
+			repo := updateRepo()
+			baseURL := strings.TrimRight(updateBaseURL(), "/")
 
 			fmt.Println()
 			term.Dim.Println("  Checking for updates...")
 
-			tag, err := latestTag(repo)
+			tag, err := latestTag(baseURL, repo)
 			if err != nil {
 				return fmt.Errorf("failed to check latest version: %w", err)
 			}
@@ -66,8 +67,8 @@ func newUpdateCmd() *cobra.Command {
 			}
 
 			filename := fmt.Sprintf("tunr_%s_%s_%s.tar.gz", latest, runtime.GOOS, arch)
-			archiveURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", repo, tag, filename)
-			checksumURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/checksums.txt", repo, tag)
+			archiveURL := fmt.Sprintf("%s/%s/releases/download/%s/%s", baseURL, repo, tag, filename)
+			checksumURL := fmt.Sprintf("%s/%s/releases/download/%s/checksums.txt", baseURL, repo, tag)
 			archivePath := filepath.Join(tmpDir, filename)
 			binaryPath := filepath.Join(tmpDir, "tunr")
 
@@ -99,14 +100,14 @@ func newUpdateCmd() *cobra.Command {
 	return cmd
 }
 
-func latestTag(repo string) (string, error) {
+func latestTag(baseURL, repo string) (string, error) {
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
 
-	resp, err := client.Head(fmt.Sprintf("https://github.com/%s/releases/latest", repo))
+	resp, err := client.Head(fmt.Sprintf("%s/%s/releases/latest", strings.TrimRight(baseURL, "/"), repo))
 	if err != nil {
 		return "", err
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 
@@ -38,7 +39,7 @@ func newReplayCmd() *cobra.Command {
 					return fmt.Errorf("failed to export curl: %w", err)
 				}
 				defer resp.Body.Close()
-				_, err = fmt.Fscan(os.Stdout, resp.Body)
+				_, err = io.Copy(os.Stdout, resp.Body)
 				return err
 			}
 

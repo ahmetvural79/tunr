@@ -42,7 +42,7 @@ func newStartCmd() *cobra.Command {
 			defer func() { _ = daemon.CleanPID() }()
 
 			token, _ := auth.GetToken()
-			mgr := tunnel.NewManager("https://relay.tunr.sh")
+			mgr := tunnel.NewManager(relayURL())
 			mgr.SetAuthToken(token)
 
 			t, err := mgr.Start(ctx, port, tunnel.StartOptions{

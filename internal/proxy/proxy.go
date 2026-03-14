@@ -85,11 +85,20 @@ func NewLocalProxy(port int, pathRoutes map[string]int) (*LocalProxy, error) {
 
 		// Route to different local ports based on path prefix
 		if len(pathRoutes) > 0 {
+			bestPrefix := ""
+			bestPort := 0
 			for prefix, targetPort := range pathRoutes {
-				if strings.HasPrefix(req.URL.Path, prefix) {
-					req.URL.Host = fmt.Sprintf("localhost:%d", targetPort)
-					break
+				if !strings.HasPrefix(req.URL.Path, prefix) {
+					continue
 				}
+				// Prefer the longest matching prefix so /api beats /
+				if len(prefix) > len(bestPrefix) {
+					bestPrefix = prefix
+					bestPort = targetPort
+				}
+			}
+			if bestPort > 0 {
+				req.URL.Host = fmt.Sprintf("localhost:%d", bestPort)
 			}
 		}
 	}

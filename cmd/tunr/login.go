@@ -77,7 +77,8 @@ Required for Pro features (custom subdomains, custom domains, etc.)`,
 			srv := &http.Server{Handler: mux}
 			go func() { _ = srv.Serve(listener) }()
 
-			loginURL := fmt.Sprintf("https://app.tunr.sh/auth/cli?state=%s&callback=http://localhost:%d/callback",
+			loginURL := fmt.Sprintf("%s/auth/cli?state=%s&callback=http://localhost:%d/callback",
+				appURL(),
 				state, callbackPort)
 
 			fmt.Println()

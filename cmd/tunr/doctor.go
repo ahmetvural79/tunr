@@ -85,7 +85,7 @@ func runDoctor() error {
 
 	check("Relay", func() (string, bool) {
 		c := &http.Client{Timeout: 5 * time.Second}
-		resp, err := c.Get("https://relay.tunr.sh/api/v1/health")
+		resp, err := c.Get(relayURL() + "/api/v1/health")
 		if err != nil {
 			return "unreachable", false
 		}
