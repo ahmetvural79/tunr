@@ -139,6 +139,8 @@ func (h *Handler) ServeTunnel(w http.ResponseWriter, r *http.Request) {
 	// GÜVENLİK: Auth token doğrula
 	// Anonymous kullanım destekleniyor ama rate limit uygulanır
 	var userID string
+	var userPlan string
+	var isAuthenticated bool
 	if hello.Token != "" {
 		claims, err := h.jwtAuth.Verify(hello.Token)
 		if err != nil {
@@ -146,8 +148,34 @@ func (h *Handler) ServeTunnel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		userID = claims.UserID
+		userPlan = claims.Plan
+		isAuthenticated = true
 	} else {
 		userID = "anon:" + r.RemoteAddr
+	}
+
+	// Reserved subdomain ownership check.
+	if hello.Subdomain != "" {
+		if !isAuthenticated {
+			writeErr(conn, "Custom subdomain requires login")
+			return
+		}
+		if userPlan != "pro" && userPlan != "team" {
+			writeErr(conn, "Custom subdomain requires Pro subscription")
+			return
+		}
+		if h.db != nil {
+			ownerUserID, found, err := h.db.GetReservedSubdomainOwner(r.Context(), hello.Subdomain)
+			if err != nil {
+				logger.Warn("reserved subdomain check failed (%s): %v", hello.Subdomain, err)
+				writeErr(conn, "subdomain ownership check failed")
+				return
+			}
+			if found && ownerUserID != userID {
+				writeErr(conn, "subdomain is reserved by another user")
+				return
+			}
+		}
 	}
 
 	// Tunnel kayıt et

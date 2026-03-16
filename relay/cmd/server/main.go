@@ -78,6 +78,19 @@ func main() {
 	// ── API endpoints ──
 	mux.HandleFunc("/api/v1/status", handleStatus(registry))
 	mux.HandleFunc("/api/v1/health", handleHealth())
+	if cfg.PaddleWebhookSecret != "" {
+		paddleWebhook := relay.NewPaddleWebhookHandler(database, cfg.PaddleWebhookSecret, relay.PaddlePlanConfig{
+			ProPriceID:      cfg.PaddleProPriceID,
+			TeamPriceID:     cfg.PaddleTeamPriceID,
+			ProProductID:    cfg.PaddleProProductID,
+			TeamProductID:   cfg.PaddleTeamProductID,
+			DefaultPaidPlan: cfg.PaddleDefaultPaidPlan,
+		})
+		mux.Handle("/webhook/paddle", paddleWebhook)
+		logger.Info("Paddle webhook endpoint enabled: /webhook/paddle")
+	} else {
+		logger.Warn("PADDLE_WEBHOOK_SECRET not set — /webhook/paddle is disabled")
+	}
 
 	// ── Tüm diğer istekler → tunnel proxy ──
 	// Subdomain bazlı routing buradan geçer
@@ -257,18 +270,30 @@ func handleHealth() http.HandlerFunc {
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 type Config struct {
-	Domain      string
-	Port        string
-	JWTSecret   string
-	DatabaseURL string
+	Domain               string
+	Port                 string
+	JWTSecret            string
+	DatabaseURL          string
+	PaddleWebhookSecret  string
+	PaddleProPriceID     string
+	PaddleTeamPriceID    string
+	PaddleProProductID   string
+	PaddleTeamProductID  string
+	PaddleDefaultPaidPlan string
 }
 
 func loadConfig() Config {
 	cfg := Config{
-		Domain:      getEnv("TUNR_DOMAIN", "tunr.sh"),
-		Port:        getEnv("PORT", "8080"),
-		JWTSecret:   getEnv("TUNR_JWT_SECRET", ""),
-		DatabaseURL: getEnv("DATABASE_URL", ""),
+		Domain:                getEnv("TUNR_DOMAIN", "tunr.sh"),
+		Port:                  getEnv("PORT", "8080"),
+		JWTSecret:             getEnv("TUNR_JWT_SECRET", ""),
+		DatabaseURL:           getEnv("DATABASE_URL", ""),
+		PaddleWebhookSecret:   getEnv("PADDLE_WEBHOOK_SECRET", ""),
+		PaddleProPriceID:      getEnv("PADDLE_PRO_PRICE_ID", ""),
+		PaddleTeamPriceID:     getEnv("PADDLE_TEAM_PRICE_ID", ""),
+		PaddleProProductID:    getEnv("PADDLE_PRO_PRODUCT_ID", ""),
+		PaddleTeamProductID:   getEnv("PADDLE_TEAM_PRODUCT_ID", ""),
+		PaddleDefaultPaidPlan: getEnv("PADDLE_DEFAULT_PAID_PLAN", "pro"),
 	}
 
 	// GÜVENLİK: JWT secret zorunlu

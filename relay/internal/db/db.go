@@ -2,9 +2,11 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -104,6 +106,31 @@ func (db *DB) UpdateUserPlan(ctx context.Context, paddleCustomerID, newPlan stri
 	return err
 }
 
+// UpdateUserPlanByCustomerID updates plan by Paddle customer ID and returns whether a row changed.
+func (db *DB) UpdateUserPlanByCustomerID(ctx context.Context, paddleCustomerID, newPlan string) (bool, error) {
+	const q = `UPDATE users SET plan = $1 WHERE paddle_customer_id = $2`
+	tag, err := db.pool.Exec(ctx, q, newPlan, paddleCustomerID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// LinkPaddleCustomerByEmail stores Paddle customer ID for an existing user.
+func (db *DB) LinkPaddleCustomerByEmail(ctx context.Context, email, paddleCustomerID string) (bool, error) {
+	const q = `
+		UPDATE users
+		SET paddle_customer_id = $1
+		WHERE email = $2
+		  AND (paddle_customer_id IS NULL OR paddle_customer_id = '' OR paddle_customer_id = $1)
+	`
+	tag, err := db.pool.Exec(ctx, q, paddleCustomerID, email)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 // ─── MAGIC TOKEN İŞLEMLERİ ───────────────────────────────────────────────────
 
 // SaveMagicToken — magic link token'ı kaydet
@@ -186,4 +213,52 @@ func (db *DB) AuditLog(ctx context.Context, userID, action string, detail map[st
 		const q = `INSERT INTO audit_log (user_id, action, detail) VALUES ($1::uuid, $2, $3)`
 		_, _ = db.pool.Exec(context.Background(), q, userID, action, detail)
 	}()
+}
+
+// EnsureUserDomainsTable creates user_domains table used by dashboard + relay subdomain ownership checks.
+func (db *DB) EnsureUserDomainsTable(ctx context.Context) error {
+	const createTable = `
+		CREATE TABLE IF NOT EXISTS user_domains (
+			id BIGSERIAL PRIMARY KEY,
+			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			type TEXT NOT NULL CHECK (type IN ('subdomain', 'custom')),
+			domain TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			UNIQUE (user_id, type, domain)
+		)
+	`
+	if _, err := db.pool.Exec(ctx, createTable); err != nil {
+		return err
+	}
+	const createIndex = `
+		CREATE INDEX IF NOT EXISTS idx_user_domains_type_domain_updated
+		ON user_domains (type, domain, updated_at DESC)
+	`
+	_, err := db.pool.Exec(ctx, createIndex)
+	return err
+}
+
+// GetReservedSubdomainOwner returns owner user_id for a reserved subdomain if present.
+func (db *DB) GetReservedSubdomainOwner(ctx context.Context, subdomain string) (string, bool, error) {
+	if err := db.EnsureUserDomainsTable(ctx); err != nil {
+		return "", false, err
+	}
+
+	const q = `
+		SELECT user_id::text
+		FROM user_domains
+		WHERE type = 'subdomain' AND domain = $1
+		ORDER BY updated_at DESC
+		LIMIT 1
+	`
+	var ownerUserID string
+	err := db.pool.QueryRow(ctx, q, subdomain).Scan(&ownerUserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return ownerUserID, true, nil
 }

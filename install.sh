@@ -57,7 +57,15 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
 log "Step 3/7: Downloading archive..."
-curl -fL --retry 3 --connect-timeout 15 --progress-bar "$URL" -o "$TMP/$FILENAME"
+if ! curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 --progress-bar "$URL" -o "$TMP/$FILENAME"; then
+  echo ""
+  echo "Download failed (404 or network error). Possible causes:"
+  echo "  - Release not yet published for ${OS}/${ARCH}"
+  echo "  - Temporary GitHub/CDN issue — try again in a minute"
+  echo ""
+  echo "Alternative: brew install ahmetvural79/tap/tunr"
+  exit 1
+fi
 
 log "Step 4/7: Downloading checksums..."
 curl -fsSL --retry 3 --connect-timeout 15 "$CHECKSUM_URL" -o "$TMP/checksums.txt"
@@ -72,18 +80,26 @@ else
 fi
 
 log "Step 6/7: Extracting archive..."
-# Goreleaser puts binaries in subfolder: tunr_0.1.1_os_arch/
-ARCHIVE_DIR="${BINARY}_${VERSION}_${OS}_${ARCH}"
 if [ "$OS" = "windows" ]; then
   if ! command -v unzip >/dev/null 2>&1; then
     echo "Error: unzip is required for Windows. Install it or use Git Bash which includes unzip."
     exit 1
   fi
+  ARCHIVE_DIR="${BINARY}_${VERSION}_${OS}_${ARCH}"
   unzip -o -q "$TMP/$FILENAME" -d "$TMP"
   BINFILE="$TMP/$ARCHIVE_DIR/${BINARY}.exe"
 else
   tar -xzf "$TMP/$FILENAME" -C "$TMP"
-  BINFILE="$TMP/$ARCHIVE_DIR/$BINARY"
+  # Goreleaser may put binary at root or in subdir; check both
+  ARCHIVE_DIR="${BINARY}_${VERSION}_${OS}_${ARCH}"
+  if [ -f "$TMP/$ARCHIVE_DIR/$BINARY" ]; then
+    BINFILE="$TMP/$ARCHIVE_DIR/$BINARY"
+  elif [ -f "$TMP/$BINARY" ]; then
+    BINFILE="$TMP/$BINARY"
+  else
+    echo "Error: could not find binary in archive"
+    exit 1
+  fi
 fi
 
 if [ "$OS" = "windows" ]; then

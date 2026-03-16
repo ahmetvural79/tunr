@@ -88,6 +88,14 @@ func (a *UserAPI) authMiddleware(next http.Handler) http.Handler {
 		if plan == "" {
 			plan = "free"
 		}
+		if a.db != nil {
+			user, err := a.db.GetUserByID(r.Context(), claims.UserID)
+			if err != nil {
+				logger.Warn("user plan lookup failed for user=%s: %v", claims.UserID, err)
+			} else if user != nil && user.Plan != "" {
+				plan = user.Plan
+			}
+		}
 		if !a.rl.Allow("user:"+claims.UserID, plan) {
 			writeAPIError(w, http.StatusTooManyRequests, "rate_limit_exceeded", "İstek limiti aşıldı.")
 			return
