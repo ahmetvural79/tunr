@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 )
 
 // Registry — aktif tunnel kayıt defteri.
@@ -29,6 +30,12 @@ type TunnelEntry struct {
 
 	mu              sync.Mutex
 	pendingRequests map[string]*TunnelRequest // requestID → waiting request
+
+	// Outbound carries control messages to the CLI (ws_open, ws_frame from browser, ws_close).
+	Outbound chan Message
+
+	wsMu    sync.Mutex
+	wsPeers map[string]*websocket.Conn // tunr stream_id → browser WebSocket
 }
 
 // TunnelRequest — relay'in tunnel client'ına ilettiği HTTP isteği
@@ -96,10 +103,12 @@ func (r *Registry) Register(userID string, preferredSubdomain string) (*TunnelEn
 		UserID:          userID,
 		Subdomain:       subdomain,
 		Requests:        make(chan *TunnelRequest, 16),
+		Outbound:        make(chan Message, 256),
 		Done:            make(chan struct{}),
 		ConnectedAt:     time.Now(),
 		LastPingAt:      time.Now(),
 		pendingRequests: make(map[string]*TunnelRequest),
+		wsPeers:         make(map[string]*websocket.Conn),
 	}
 
 	r.tunnels[id] = entry
@@ -134,6 +143,8 @@ func (r *Registry) Unregister(id string) {
 	if !ok {
 		return
 	}
+
+	entry.CloseAllBrowserWS()
 
 	// Done kanalını kapat — bekleyen goroutineler haberdar olsun
 	select {
@@ -203,6 +214,7 @@ func (r *Registry) cleanupLoop() {
 		}
 		for _, id := range stale {
 			entry := r.tunnels[id]
+			entry.CloseAllBrowserWS()
 			select {
 			case <-entry.Done:
 			default:
@@ -245,6 +257,59 @@ func (e *TunnelEntry) IsAlive() bool {
 // PublicURL — tunnel'ın public URL'si
 func (e *TunnelEntry) PublicURL(domain string) string {
 	return fmt.Sprintf("https://%s.%s", e.Subdomain, domain)
+}
+
+// CloseAllBrowserWS closes every public WebSocket still attached to this tunnel.
+func (e *TunnelEntry) CloseAllBrowserWS() {
+	e.wsMu.Lock()
+	defer e.wsMu.Unlock()
+	for streamID, c := range e.wsPeers {
+		_ = c.WriteControl(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseGoingAway, "tunnel closed"),
+			time.Now().Add(2*time.Second))
+		_ = c.Close()
+		delete(e.wsPeers, streamID)
+	}
+}
+
+// StoreBrowserWS registers the edge WebSocket for a tunr stream id.
+func (e *TunnelEntry) StoreBrowserWS(streamID string, c *websocket.Conn) {
+	e.wsMu.Lock()
+	defer e.wsMu.Unlock()
+	e.wsPeers[streamID] = c
+}
+
+// RemoveBrowserWS drops the browser side mapping (does not close the conn if caller already closed).
+func (e *TunnelEntry) RemoveBrowserWS(streamID string) {
+	e.wsMu.Lock()
+	defer e.wsMu.Unlock()
+	delete(e.wsPeers, streamID)
+}
+
+// WriteWSFrameToBrowser forwards a frame from the CLI to the browser.
+func (e *TunnelEntry) WriteWSFrameToBrowser(streamID string, messageType int, payload []byte) error {
+	e.wsMu.Lock()
+	c := e.wsPeers[streamID]
+	e.wsMu.Unlock()
+	if c == nil {
+		return fmt.Errorf("unknown ws stream %s", streamID)
+	}
+	return c.WriteMessage(messageType, payload)
+}
+
+// CloseBrowserWS closes the public WebSocket for a stream (from CLI or relay).
+func (e *TunnelEntry) CloseBrowserWS(streamID string, code int, text string) {
+	e.wsMu.Lock()
+	c := e.wsPeers[streamID]
+	delete(e.wsPeers, streamID)
+	e.wsMu.Unlock()
+	if c == nil {
+		return
+	}
+	_ = c.WriteControl(websocket.CloseMessage,
+		websocket.FormatCloseMessage(code, text),
+		time.Now().Add(3*time.Second))
+	_ = c.Close()
 }
 
 // ForwardRequest queues the request for the CLI, tracks it in pendingRequests,

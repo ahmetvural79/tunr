@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/proxy"
 	"github.com/gorilla/websocket"
 )
 
@@ -27,6 +29,9 @@ const (
 	MsgTypePong     MsgType = "pong"
 	MsgTypeError    MsgType = "error"
 	MsgTypeClose    MsgType = "close"
+	MsgTypeWsOpen   MsgType = "ws_open"
+	MsgTypeWsFrame  MsgType = "ws_frame"
+	MsgTypeWsClose  MsgType = "ws_close"
 )
 
 type wsMessage struct {
@@ -158,9 +163,11 @@ func ConnectRelay(ctx context.Context, relayURL string, token string, port int, 
 
 // RunLoop reads messages from the relay and dispatches them.
 // For "request" messages it calls forwardToLocal; for "ping" it responds with "pong".
+// WebSocket browser sessions use ws_open / ws_frame / ws_close on the same control connection.
 // Blocks until ctx is cancelled or the connection drops.
-func (rc *RelayConn) RunLoop(ctx context.Context, forwardToLocal func(ctx context.Context, req *requestData) *responseData) error {
+func (rc *RelayConn) RunLoop(ctx context.Context, lp *proxy.LocalProxy, forwardToLocal func(ctx context.Context, req *requestData) *responseData) error {
 	errCh := make(chan error, 1)
+	hub := newWSStreamHub()
 
 	go func() {
 		for {
@@ -192,6 +199,33 @@ func (rc *RelayConn) RunLoop(ctx context.Context, forwardToLocal func(ctx contex
 					}
 				}(req)
 
+			case MsgTypeWsOpen:
+				go runCLIWebSocketBridge(ctx, rc, hub, lp, msg.Data)
+
+			case MsgTypeWsFrame:
+				var fr wsFramePayload
+				if err := json.Unmarshal(msg.Data, &fr); err != nil {
+					continue
+				}
+				raw, err := base64.StdEncoding.DecodeString(fr.PayloadB64)
+				if err != nil {
+					continue
+				}
+				if err := hub.writeFrame(fr.StreamID, fr.Opcode, raw); err != nil {
+					logger.Debug("ws_frame to upstream: %v", err)
+				}
+
+			case MsgTypeWsClose:
+				var cl wsClosePayload
+				if err := json.Unmarshal(msg.Data, &cl); err != nil {
+					continue
+				}
+				code := cl.Code
+				if code == 0 {
+					code = websocket.CloseNormalClosure
+				}
+				hub.shutdownStream(cl.StreamID, code, cl.Reason)
+
 			case MsgTypeError:
 				logger.Warn("Relay error: %s", string(msg.Data))
 
@@ -204,10 +238,12 @@ func (rc *RelayConn) RunLoop(ctx context.Context, forwardToLocal func(ctx contex
 
 	select {
 	case <-ctx.Done():
+		hub.closeAll()
 		_ = rc.writeJSON(wsMessage{Type: MsgTypeClose})
 		rc.conn.Close()
 		return ctx.Err()
 	case err := <-errCh:
+		hub.closeAll()
 		rc.conn.Close()
 		return err
 	}

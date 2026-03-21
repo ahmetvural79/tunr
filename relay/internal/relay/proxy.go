@@ -57,6 +57,11 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if isBrowserWebSocket(r) {
+		p.serveBrowserWebSocket(w, r, entry)
+		return
+	}
+
 	// Request body'yi oku
 	var body []byte
 	if r.Body != nil {

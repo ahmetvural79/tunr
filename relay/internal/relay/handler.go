@@ -39,6 +39,9 @@ const (
 	MsgTypePong     MsgType = "pong"     // CLI → relay: heartbeat yanıtı
 	MsgTypeError    MsgType = "error"    // iki yönlü: hata bildirimi
 	MsgTypeClose    MsgType = "close"    // tunnel kapatma isteği
+	MsgTypeWsOpen   MsgType = "ws_open"  // relay → CLI: browser WS tunnel start
+	MsgTypeWsFrame  MsgType = "ws_frame" // bidirectional WS payload
+	MsgTypeWsClose  MsgType = "ws_close" // bidirectional WS shutdown
 )
 
 // Message — WS üzerinden gönderilen JSON mesajı
@@ -81,6 +84,28 @@ type ResponseData struct {
 	HeadersV2  map[string][]string `json:"headers_v2,omitempty"`
 	Body       string              `json:"body,omitempty"`
 	BodyB64    string              `json:"body_b64,omitempty"`
+}
+
+// WsOpenData — browser WebSocket'inin yerel proxylenmesi için meta
+type WsOpenData struct {
+	StreamID  string              `json:"stream_id"`
+	Path      string              `json:"path"`
+	Headers   map[string]string   `json:"headers,omitempty"`
+	HeadersV2 map[string][]string `json:"headers_v2,omitempty"`
+}
+
+// WsFrameData — tek WS frame (opcode + base64 payload)
+type WsFrameData struct {
+	StreamID   string `json:"stream_id"`
+	Opcode     int    `json:"opcode"`
+	PayloadB64 string `json:"payload_b64"`
+}
+
+// WsCloseData — WS stream kapatma
+type WsCloseData struct {
+	StreamID string `json:"stream_id"`
+	Code     int    `json:"code"`
+	Reason   string `json:"reason"`
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -200,6 +225,8 @@ func (h *Handler) ServeTunnel(w http.ResponseWriter, r *http.Request) {
 		_ = h.db.RecordTunnelConnect(r.Context(), entry.ID, userID, entry.Subdomain)
 	}
 
+	entry.LocalPort = hello.LocalPort
+
 	// Welcome mesajı gönder
 	welcomeData, _ := json.Marshal(WelcomeData{
 		TunnelID:  entry.ID,
@@ -239,13 +266,19 @@ func (h *Handler) ServeTunnel(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// 2. Relay → CLI: HTTP isteklerini ilet
+	// 2. Relay → CLI: HTTP isteklerini ve WS kontrol mesajlarını ilet
 	go func() {
 		for {
 			select {
 			case <-entry.Done:
 				errCh <- nil
 				return
+			case msg := <-entry.Outbound:
+				_ = conn.SetWriteDeadline(time.Now().Add(60 * time.Second))
+				if err := conn.WriteJSON(msg); err != nil {
+					errCh <- err
+					return
+				}
 			case req := <-entry.Requests:
 				reqData, _ := json.Marshal(RequestData{
 					RequestID: req.ID,
@@ -310,6 +343,31 @@ func (h *Handler) handleClientMessage(entry *TunnelEntry, msg *Message) error {
 
 	case MsgTypePong:
 		h.registry.UpdatePing(entry.ID)
+
+	case MsgTypeWsFrame:
+		var fr WsFrameData
+		if err := json.Unmarshal(msg.Data, &fr); err != nil {
+			return nil
+		}
+		payload, err := base64.StdEncoding.DecodeString(fr.PayloadB64)
+		if err != nil {
+			logger.Warn("ws_frame bad base64 stream=%s: %v", fr.StreamID, err)
+			return nil
+		}
+		if err := entry.WriteWSFrameToBrowser(fr.StreamID, fr.Opcode, payload); err != nil {
+			logger.Debug("ws_frame to browser skipped stream=%s: %v", fr.StreamID, err)
+		}
+
+	case MsgTypeWsClose:
+		var cl WsCloseData
+		if err := json.Unmarshal(msg.Data, &cl); err != nil {
+			return nil
+		}
+		code := cl.Code
+		if code == 0 {
+			code = websocket.CloseNormalClosure
+		}
+		entry.CloseBrowserWS(cl.StreamID, code, cl.Reason)
 
 	case MsgTypeClose:
 		return io.EOF // bağlantıyı kapat

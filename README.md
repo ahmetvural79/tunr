@@ -34,7 +34,7 @@ $ tunr share --port 3000
 
 ## What is tunr?
 
-**tunr** exposes your local development server to the internet in under 3 seconds — with automatic HTTPS and zero configuration. **Note:** browser WebSocket upgrades (e.g. Next.js / Vite HMR) are not yet proxied end-to-end through the public tunnel; see [Troubleshooting](#troubleshooting).
+**tunr** exposes your local development server to the internet in under 3 seconds — with automatic HTTPS and zero configuration. **Browser WebSockets** (e.g. Next.js / Vite HMR) are bridged over the same control channel as HTTP when you use the tunr relay + CLI; see [Troubleshooting](#troubleshooting) for Next.js `allowedDevOrigins` and edge cases.
 
 It's a developer-first alternative to ngrok and Cloudflare Tunnel, built in Go as a single static binary that runs on macOS, Linux, and Windows (ARM64 included).
 
@@ -44,7 +44,7 @@ It's a developer-first alternative to ngrok and Cloudflare Tunnel, built in Go a
 |---------|------|-------|-------------------|
 | Zero config | ✅ | ⚠️ | ⚠️ |
 | Automatic HTTPS | ✅ | ✅ | ✅ |
-| WebSocket + HMR (public tunnel) | ⚠️ [see notes](#troubleshooting) | ✅ | ✅ |
+| WebSocket + HMR (public tunnel) | ✅ [see notes](#troubleshooting) | ✅ | ✅ |
 | **Vibecoder Demo Mode** | ✅ | ❌ | ❌ |
 | **Freeze Mode** | ✅ | ❌ | ❌ |
 | **Feedback Widget Injection** | ✅ | ❌ | ❌ |
@@ -213,9 +213,13 @@ That HTML is the browser’s **network error** page — usually the **main docum
 
 ### WebSocket / HMR over the public URL
 
-The tunr cloud tunnel today forwards **HTTP request/response** per hop. A **browser WebSocket upgrade** needs a long-lived bidirectional connection; that path is **not supported** yet. You may see a **502** JSON body with `websocket_not_supported_through_tunnel` on WebSocket URLs. Workarounds: use **`next build && next start`**, test HMR on **localhost**, or use a tunnel that supports end-to-end WebSockets.
+The tunr **edge relay** upgrades the public `wss://` connection and streams frames to your **CLI**, which opens a local `ws://` connection to your dev server. That gives you end-to-end HMR-style WebSockets without a separate tunnel product.
 
-Optional: for local WebSocket origin checks, set `TUNR_WS_EXTRA_ALLOWED_ORIGIN_SUFFIXES` (comma-separated hostname suffixes).
+**Still required for some frameworks:** Next.js dev server may block cross-origin requests until you add your tunnel host to `allowedDevOrigins` in `next.config` (see above). If HMR still fails, fall back to **`next build && next start`** or test HMR on **localhost**.
+
+**Relay / edge:** WebSocket bridging is implemented on the tunr relay; self-hosted edges must run a relay build that includes this feature.
+
+Optional: for relay **origin checks** on the browser WebSocket handshake, set `TUNR_WS_EXTRA_ALLOWED_ORIGIN_SUFFIXES` (comma-separated hostname suffixes).
 
 ---
 

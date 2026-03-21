@@ -159,6 +159,32 @@ func NewLocalProxy(port int, pathRoutes map[string]int) (*LocalProxy, error) {
 	return proxy, nil
 }
 
+// ResolvePortForPath returns the local TCP port used for a request path (honours --route prefixes).
+func (p *LocalProxy) ResolvePortForPath(requestPath string) int {
+	path := requestPath
+	if i := strings.Index(path, "?"); i >= 0 {
+		path = path[:i]
+	}
+	if len(p.PathRoutes) == 0 {
+		return p.Port
+	}
+	bestPrefix := ""
+	bestPort := 0
+	for prefix, targetPort := range p.PathRoutes {
+		if !strings.HasPrefix(path, prefix) {
+			continue
+		}
+		if len(prefix) > len(bestPrefix) {
+			bestPrefix = prefix
+			bestPort = targetPort
+		}
+	}
+	if bestPort > 0 {
+		return bestPort
+	}
+	return p.Port
+}
+
 // ServeHTTP dispatches incoming requests — WebSocket gets forwarded, everything else gets proxied.
 func (p *LocalProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()

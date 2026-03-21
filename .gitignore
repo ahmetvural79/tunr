@@ -44,6 +44,9 @@ coverage.html
 # Test binaries
 **/*.test
 
+# Local CI / test output
+/artifacts/
+
 # goreleaser output
 /dist/
 _build/
