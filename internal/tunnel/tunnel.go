@@ -3,6 +3,7 @@ package tunnel
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"os/exec"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ahmetvural79/tunr/internal/logger"
 	"github.com/ahmetvural79/tunr/internal/proxy"
@@ -216,7 +218,17 @@ func (m *Manager) runTunnel(ctx context.Context, t *Tunnel, localProxy *proxy.Lo
 // the existing LocalProxy (which handles path routing, demo mode, etc.)
 // and returns the response to be sent back to the relay.
 func forwardViaProxy(lp *proxy.LocalProxy, port int, req *requestData) *responseData {
-	bodyReader := strings.NewReader(req.Body)
+	requestBody, err := decodeWireBody(req.BodyB64, req.Body)
+	if err != nil {
+		return &responseData{
+			RequestID:  req.RequestID,
+			StatusCode: http.StatusBadRequest,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+			Body:       `{"error":"invalid_request_body_encoding"}`,
+		}
+	}
+
+	bodyReader := bytes.NewReader(requestBody)
 	httpReq, err := http.NewRequest(req.Method, fmt.Sprintf("http://localhost:%d%s", port, req.Path), bodyReader)
 	if err != nil {
 		return &responseData{
@@ -227,8 +239,16 @@ func forwardViaProxy(lp *proxy.LocalProxy, port int, req *requestData) *response
 		}
 	}
 
-	for k, v := range req.Headers {
-		httpReq.Header.Set(k, v)
+	if len(req.HeadersV2) > 0 {
+		for k, vals := range req.HeadersV2 {
+			for _, v := range vals {
+				httpReq.Header.Add(k, v)
+			}
+		}
+	} else {
+		for k, v := range req.Headers {
+			httpReq.Header.Set(k, v)
+		}
 	}
 
 	rec := &bufferedResponseWriter{header: http.Header{}, statusCode: http.StatusOK}
@@ -239,12 +259,18 @@ func forwardViaProxy(lp *proxy.LocalProxy, port int, req *requestData) *response
 		respHeaders[k] = strings.Join(vals, ", ")
 	}
 
-	return &responseData{
+	bodyBytes := rec.body.Bytes()
+	resp := &responseData{
 		RequestID:  req.RequestID,
 		StatusCode: rec.statusCode,
 		Headers:    respHeaders,
-		Body:       rec.body.String(),
+		HeadersV2:  cloneHeaderValues(rec.header),
+		BodyB64:    base64.StdEncoding.EncodeToString(bodyBytes),
 	}
+	if utf8.Valid(bodyBytes) {
+		resp.Body = string(bodyBytes)
+	}
+	return resp
 }
 
 // bufferedResponseWriter captures an HTTP response in memory so we can
@@ -272,6 +298,23 @@ func (w *bufferedResponseWriter) Write(b []byte) (int, error) {
 
 // Ensure the interface is satisfied at compile time.
 var _ http.ResponseWriter = (*bufferedResponseWriter)(nil)
+
+func decodeWireBody(bodyB64, body string) ([]byte, error) {
+	if bodyB64 != "" {
+		return base64.StdEncoding.DecodeString(bodyB64)
+	}
+	return []byte(body), nil
+}
+
+func cloneHeaderValues(h http.Header) map[string][]string {
+	result := make(map[string][]string, len(h))
+	for key, vals := range h {
+		cloned := make([]string, len(vals))
+		copy(cloned, vals)
+		result[key] = cloned
+	}
+	return result
+}
 
 // Remove stops a tunnel and evicts it from the map
 func (m *Manager) Remove(id string) {

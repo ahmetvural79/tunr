@@ -3,6 +3,7 @@ package relay
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -35,13 +36,21 @@ const (
 //	GET  /api/user/usage         → bu ay kullanım detayı
 
 type UserAPI struct {
-	jwtAuth *auth.JWTAuth
-	db      *relaydb.DB
-	rl      *RateLimiter
+	jwtAuth  *auth.JWTAuth
+	db       *relaydb.DB
+	rl       *RateLimiter
+	registry *Registry
+	domain   string
 }
 
-func NewUserAPI(jwtAuth *auth.JWTAuth, db *relaydb.DB, rl *RateLimiter) *UserAPI {
-	return &UserAPI{jwtAuth: jwtAuth, db: db, rl: rl}
+func NewUserAPI(jwtAuth *auth.JWTAuth, db *relaydb.DB, rl *RateLimiter, registry *Registry, domain string) *UserAPI {
+	return &UserAPI{
+		jwtAuth:  jwtAuth,
+		db:       db,
+		rl:       rl,
+		registry: registry,
+		domain:   domain,
+	}
 }
 
 // RegisterRoutes — mux'a route'ları ekle
@@ -156,15 +165,66 @@ func (a *UserAPI) handleTunnels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := r.Context().Value(ctxKeyUserID).(string)
+	tunnels := make([]map[string]interface{}, 0, 64)
+	tunnelByID := make(map[string]map[string]interface{})
 
-	// TODO: Registry'den o kullanıcının aktif tünellerini al
-	// tunnels := a.registry.GetByUser(userID)
-	_ = userID
-
-	tunnels := []map[string]interface{}{
-		// Şimdilik boş — registry entegrasyonu sonraki fazda
+	if a.registry != nil {
+		activeTunnels := a.registry.ListByUser(userID)
+		for _, activeTunnel := range activeTunnels {
+			record := map[string]interface{}{
+				"id":              activeTunnel.ID,
+				"subdomain":       activeTunnel.Subdomain,
+				"public_url":      fmt.Sprintf("https://%s.%s", activeTunnel.Subdomain, a.domain),
+				"status":          "active",
+				"is_active":       true,
+				"connected_at":    activeTunnel.ConnectedAt.UTC().Format(time.RFC3339),
+				"disconnected_at": nil,
+				"source":          "registry",
+			}
+			tunnels = append(tunnels, record)
+			tunnelByID[activeTunnel.ID] = record
+		}
 	}
 
+	if a.db != nil {
+		history, err := a.db.ListUserTunnels(r.Context(), userID, 100)
+		if err != nil {
+			logger.Warn("user tunnel history lookup failed for user=%s: %v", userID, err)
+		} else {
+			for _, historyRecord := range history {
+				if existing, found := tunnelByID[historyRecord.ShortID]; found {
+					if historyRecord.DisconnectedAt != nil {
+						existing["disconnected_at"] = historyRecord.DisconnectedAt.UTC().Format(time.RFC3339)
+					}
+					continue
+				}
+
+				status := "closed"
+				isActive := false
+				var disconnectedAt interface{}
+				if historyRecord.DisconnectedAt == nil {
+					status = "active"
+					isActive = true
+					disconnectedAt = nil
+				} else {
+					disconnectedAt = historyRecord.DisconnectedAt.UTC().Format(time.RFC3339)
+				}
+
+				tunnels = append(tunnels, map[string]interface{}{
+					"id":              historyRecord.ShortID,
+					"subdomain":       historyRecord.Subdomain,
+					"public_url":      fmt.Sprintf("https://%s.%s", historyRecord.Subdomain, a.domain),
+					"status":          status,
+					"is_active":       isActive,
+					"connected_at":    historyRecord.ConnectedAt.UTC().Format(time.RFC3339),
+					"disconnected_at": disconnectedAt,
+					"source":          "database",
+				})
+			}
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"tunnels": tunnels,
 		"count":   len(tunnels),

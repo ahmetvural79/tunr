@@ -122,6 +122,7 @@ type injectMiddlewareResponseWriter struct {
 	headersSet bool
 	isHTML     bool
 	gzipped    bool
+	canInject  bool
 }
 
 func (w *injectMiddlewareResponseWriter) WriteHeader(statusCode int) {
@@ -131,13 +132,19 @@ func (w *injectMiddlewareResponseWriter) WriteHeader(statusCode int) {
 	w.statusCode = statusCode
 
 	contentType := w.ResponseWriter.Header().Get("Content-Type")
-	w.isHTML = strings.Contains(strings.ToLower(contentType), "text/html")
+	contentType = strings.ToLower(contentType)
+	w.isHTML = strings.Contains(contentType, "text/html")
 
 	encoding := w.ResponseWriter.Header().Get("Content-Encoding")
+	encoding = strings.ToLower(strings.TrimSpace(encoding))
 	w.gzipped = strings.Contains(encoding, "gzip")
+	w.canInject = w.isHTML && (encoding == "" || w.gzipped)
+	if w.isHTML && !w.canInject {
+		w.ResponseWriter.Header().Set("X-Tunr-Widget-Skipped", "unsupported-content-encoding")
+	}
 
 	// Drop Content-Length for HTML — we're about to change the size
-	if w.isHTML {
+	if w.canInject {
 		w.ResponseWriter.Header().Del("Content-Length")
 	}
 
@@ -150,7 +157,7 @@ func (w *injectMiddlewareResponseWriter) Write(b []byte) (int, error) {
 	}
 
 	// Buffer HTML responses in memory so we can inject into them
-	if w.isHTML {
+	if w.canInject {
 		return w.bodyBuf.Write(b)
 	}
 
@@ -163,7 +170,7 @@ func (w *injectMiddlewareResponseWriter) Write(b []byte) (int, error) {
 }
 
 func (w *injectMiddlewareResponseWriter) flush() {
-	if !w.isHTML || w.bodyBuf.Len() == 0 {
+	if !w.canInject || w.bodyBuf.Len() == 0 {
 		return
 	}
 
@@ -190,6 +197,13 @@ func (w *injectMiddlewareResponseWriter) flush() {
 
 	// 2. Inject right before </body>
 	bodyStr := string(body)
+	if strings.Contains(bodyStr, "id=\"tunr-feedback-btn\"") {
+		if w.statusCode > 0 {
+			w.ResponseWriter.WriteHeader(w.statusCode)
+		}
+		_, _ = w.ResponseWriter.Write(body)
+		return
+	}
 	idx := strings.LastIndex(strings.ToLower(bodyStr), "</body>")
 	if idx != -1 {
 		bodyStr = bodyStr[:idx] + InjectionScript + bodyStr[idx:]
@@ -213,6 +227,11 @@ func (w *injectMiddlewareResponseWriter) flush() {
 	}
 
 	// 4. Ship it
+	// Inline widget needs inline script/style support.
+	if w.ResponseWriter.Header().Get("Content-Security-Policy") != "" {
+		w.ResponseWriter.Header().Del("Content-Security-Policy")
+		w.ResponseWriter.Header().Set("X-Tunr-Widget-CSP", "removed-for-injection")
+	}
 	w.ResponseWriter.Header().Set("Content-Length", fmt.Sprintf("%d", len(finalBody)))
 	if w.statusCode > 0 {
 		w.ResponseWriter.WriteHeader(w.statusCode)

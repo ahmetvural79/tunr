@@ -170,6 +170,20 @@ func (r *Registry) Stats() map[string]interface{} {
 	}
 }
 
+func (r *Registry) ListByUser(userID string) []*TunnelEntry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make([]*TunnelEntry, 0)
+	for _, tunnelEntry := range r.tunnels {
+		if tunnelEntry.UserID != userID {
+			continue
+		}
+		result = append(result, tunnelEntry)
+	}
+	return result
+}
+
 // cleanupLoop — 30 saniyedir ping almayan tunnel'ları temizle
 // GÜVENLİK: Zombie tunnel'lar subdomain'i bloklamamalı
 func (r *Registry) cleanupLoop() {

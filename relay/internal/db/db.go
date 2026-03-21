@@ -196,6 +196,46 @@ func (db *DB) RecordTunnelDisconnect(ctx context.Context, shortID string) error 
 	return err
 }
 
+type TunnelRecord struct {
+	ShortID        string
+	Subdomain      string
+	ConnectedAt    time.Time
+	DisconnectedAt *time.Time
+}
+
+func (db *DB) ListUserTunnels(ctx context.Context, userID string, limit int) ([]TunnelRecord, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	const q = `
+		SELECT tunnel_short_id, subdomain, connected_at, disconnected_at
+		FROM tunnels
+		WHERE user_id = $1::uuid
+		ORDER BY connected_at DESC
+		LIMIT $2
+	`
+	rows, err := db.pool.Query(ctx, q, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]TunnelRecord, 0, limit)
+	for rows.Next() {
+		var record TunnelRecord
+		if err := rows.Scan(&record.ShortID, &record.Subdomain, &record.ConnectedAt, &record.DisconnectedAt); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return records, nil
+}
+
 // CheckDailyQuota — günlük istek kotası aşıldı mı?
 func (db *DB) CheckDailyQuota(ctx context.Context, userID string) (bool, error) {
 	const q = `SELECT check_daily_quota($1::uuid)`

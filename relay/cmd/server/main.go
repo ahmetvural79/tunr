@@ -63,6 +63,8 @@ func main() {
 	registry := relay.NewRegistry()
 	handler := relay.NewHandler(registry, jwtAuth, database, cfg.Domain)
 	proxy := relay.NewProxy(registry, cfg.Domain)
+	rateLimiter := relay.NewRateLimiter()
+	userAPI := relay.NewUserAPI(jwtAuth, database, rateLimiter, registry, cfg.Domain)
 
 	// HTTP sunucusu
 	mux := http.NewServeMux()
@@ -78,6 +80,7 @@ func main() {
 	// ── API endpoints ──
 	mux.HandleFunc("/api/v1/status", handleStatus(registry))
 	mux.HandleFunc("/api/v1/health", handleHealth())
+	userAPI.RegisterRoutes(mux)
 	if cfg.PaddleWebhookSecret != "" {
 		paddleWebhook := relay.NewPaddleWebhookHandler(database, cfg.PaddleWebhookSecret, relay.PaddlePlanConfig{
 			ProPriceID:      cfg.PaddleProPriceID,

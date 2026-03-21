@@ -2,11 +2,13 @@ package relay
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ahmetvural79/tunr/relay/internal/auth"
 	relaydb "github.com/ahmetvural79/tunr/relay/internal/db"
@@ -66,7 +68,9 @@ type RequestData struct {
 	Method    string            `json:"method"`
 	Path      string            `json:"path"`
 	Headers   map[string]string `json:"headers"`
-	Body      string            `json:"body"` // base64 encode edilmemiş (UTF-8 safe)
+	HeadersV2 map[string][]string `json:"headers_v2,omitempty"`
+	Body      string              `json:"body,omitempty"`
+	BodyB64   string              `json:"body_b64,omitempty"`
 }
 
 // ResponseData — CLI'ın relay'e gönderdiği HTTP yanıtı
@@ -74,7 +78,9 @@ type ResponseData struct {
 	RequestID  string            `json:"request_id"`
 	StatusCode int               `json:"status_code"`
 	Headers    map[string]string `json:"headers"`
-	Body       string            `json:"body"`
+	HeadersV2  map[string][]string `json:"headers_v2,omitempty"`
+	Body       string              `json:"body,omitempty"`
+	BodyB64    string              `json:"body_b64,omitempty"`
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -246,7 +252,9 @@ func (h *Handler) ServeTunnel(w http.ResponseWriter, r *http.Request) {
 					Method:    req.Method,
 					Path:      req.Path,
 					Headers:   flattenHeaders(req.Headers),
-					Body:      string(req.Body),
+					HeadersV2: cloneHeaders(req.Headers),
+					Body:      encodeBodyUTF8(req.Body),
+					BodyB64:   base64.StdEncoding.EncodeToString(req.Body),
 				})
 				_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 				if err := conn.WriteJSON(Message{Type: MsgTypeRequest, Data: reqData}); err != nil {
@@ -276,14 +284,28 @@ func (h *Handler) handleClientMessage(entry *TunnelEntry, msg *Message) error {
 		}
 
 		respHeaders := make(http.Header)
-		for k, v := range resp.Headers {
-			respHeaders.Set(k, v)
+		if len(resp.HeadersV2) > 0 {
+			for k, vals := range resp.HeadersV2 {
+				for _, v := range vals {
+					respHeaders.Add(k, v)
+				}
+			}
+		} else {
+			for k, v := range resp.Headers {
+				respHeaders.Set(k, v)
+			}
+		}
+
+		body, err := decodeWireBody(resp.BodyB64, resp.Body)
+		if err != nil {
+			logger.Warn("invalid response body encoding request_id=%s: %v", resp.RequestID, err)
+			body = []byte(resp.Body)
 		}
 
 		entry.ResolveResponse(resp.RequestID, &TunnelResponse{
 			StatusCode: resp.StatusCode,
 			Headers:    respHeaders,
-			Body:       []byte(resp.Body),
+			Body:       body,
 		})
 
 	case MsgTypePong:
@@ -326,4 +348,28 @@ func flattenHeaders(h http.Header) map[string]string {
 		result[k] = strings.Join(v, ", ")
 	}
 	return result
+}
+
+func cloneHeaders(h http.Header) map[string][]string {
+	result := make(map[string][]string, len(h))
+	for k, vals := range h {
+		cloned := make([]string, len(vals))
+		copy(cloned, vals)
+		result[k] = cloned
+	}
+	return result
+}
+
+func encodeBodyUTF8(body []byte) string {
+	if utf8.Valid(body) {
+		return string(body)
+	}
+	return ""
+}
+
+func decodeWireBody(bodyB64, body string) ([]byte, error) {
+	if bodyB64 != "" {
+		return base64.StdEncoding.DecodeString(bodyB64)
+	}
+	return []byte(body), nil
 }

@@ -372,7 +372,7 @@ You are free to use, modify, and distribute this software. The only restriction 
 
 <div align="center">
 
-**[tunr.sh](https://tunr.sh)** · [Docs](https://tunr.sh/docs) · [Discord](https://discord.gg/tunr) · [Twitter/X](https://twitter.com/tunrdotsh)
+**[tunr.sh](https://tunr.sh)** · [Docs](https://tunr.sh/docs) · [Discord](https://discord.gg/tunr) · [Twitter/X](https://x.com/vural_met)
 
 Built with 💜 in Go
 
