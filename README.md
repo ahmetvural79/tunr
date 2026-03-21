@@ -34,7 +34,7 @@ $ tunr share --port 3000
 
 ## What is tunr?
 
-**tunr** exposes your local development server to the internet in under 3 seconds — with automatic HTTPS, WebSocket support, and zero configuration.
+**tunr** exposes your local development server to the internet in under 3 seconds — with automatic HTTPS and zero configuration. **Note:** browser WebSocket upgrades (e.g. Next.js / Vite HMR) are not yet proxied end-to-end through the public tunnel; see [Troubleshooting](#troubleshooting).
 
 It's a developer-first alternative to ngrok and Cloudflare Tunnel, built in Go as a single static binary that runs on macOS, Linux, and Windows (ARM64 included).
 
@@ -44,7 +44,7 @@ It's a developer-first alternative to ngrok and Cloudflare Tunnel, built in Go a
 |---------|------|-------|-------------------|
 | Zero config | ✅ | ⚠️ | ⚠️ |
 | Automatic HTTPS | ✅ | ✅ | ✅ |
-| WebSocket + HMR | ✅ | ✅ | ✅ |
+| WebSocket + HMR (public tunnel) | ⚠️ [see notes](#troubleshooting) | ✅ | ✅ |
 | **Vibecoder Demo Mode** | ✅ | ❌ | ❌ |
 | **Freeze Mode** | ✅ | ❌ | ❌ |
 | **Feedback Widget Injection** | ✅ | ❌ | ❌ |
@@ -179,6 +179,43 @@ tunr mcp            # Start MCP server (Claude, Cursor, Windsurf)
 | `tunr uninstall` | Remove tunr from system |
 | `tunr mcp` | Start MCP server |
 | `tunr config init` | Create `.tunr.json` |
+
+---
+
+## Troubleshooting
+
+### Next.js: blank page over `tunr share` (port 3000)
+
+Next.js **dev** blocks cross-origin access to dev-only endpoints unless you allow your tunnel host.
+
+1. Add **`allowedDevOrigins`** in `next.config.js` / `next.config.ts` (see [Next.js docs — allowedDevOrigins](https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins)):
+
+```js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  allowedDevOrigins: ['*.tunr.sh', 'tunr.sh'],
+}
+module.exports = nextConfig
+```
+
+Use your real tunnel domain pattern if you use a custom subdomain or self-hosted edge.
+
+2. For a **stable** public demo without HMR, prefer a production build:
+
+```bash
+npm run build && npm run start
+tunr share --port 3000
+```
+
+### “Chrome offline” / dinosaur page when using `--inject-widget`
+
+That HTML is the browser’s **network error** page — usually the **main document** failed to load (blocked dev assets, WebSocket/HMR issues, or a bad response), not the widget markup itself. Fix Next.js `allowedDevOrigins` (above) or use `next start` first.
+
+### WebSocket / HMR over the public URL
+
+The tunr cloud tunnel today forwards **HTTP request/response** per hop. A **browser WebSocket upgrade** needs a long-lived bidirectional connection; that path is **not supported** yet. You may see a **502** JSON body with `websocket_not_supported_through_tunnel` on WebSocket URLs. Workarounds: use **`next build && next start`**, test HMR on **localhost**, or use a tunnel that supports end-to-end WebSockets.
+
+Optional: for local WebSocket origin checks, set `TUNR_WS_EXTRA_ALLOWED_ORIGIN_SUFFIXES` (comma-separated hostname suffixes).
 
 ---
 

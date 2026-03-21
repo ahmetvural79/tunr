@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -45,8 +46,7 @@ type LocalProxy struct {
 
 var upgrader = websocket.Upgrader{
 	// SECURITY: Validate origins to prevent SSRF.
-	// Overriding CheckOrigin without care opens a can of worms.
-	// We only allow localhost since this is a local dev proxy.
+	// Local dev + public tunr tunnel viewers (Next/Vite HMR from https://*.tunr.sh).
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
 		if origin == "" {
@@ -56,8 +56,23 @@ var upgrader = websocket.Upgrader{
 		if err != nil {
 			return false
 		}
-		host := originURL.Hostname()
-		return host == "localhost" || host == "127.0.0.1" || host == "::1"
+		host := strings.ToLower(originURL.Hostname())
+		if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+			return true
+		}
+		if host == "tunr.sh" || strings.HasSuffix(host, ".tunr.sh") {
+			return true
+		}
+		// Optional: TUNR_WS_EXTRA_ALLOWED_ORIGIN_SUFFIXES=.mycompany.test,other.dev
+		if extra := os.Getenv("TUNR_WS_EXTRA_ALLOWED_ORIGIN_SUFFIXES"); extra != "" {
+			for _, suf := range strings.Split(extra, ",") {
+				suf = strings.TrimSpace(strings.ToLower(suf))
+				if suf != "" && strings.HasSuffix(host, suf) {
+					return true
+				}
+			}
+		}
+		return false
 	},
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,

@@ -1,6 +1,9 @@
 run:
   timeout: 5m
   go: "1.22"
+  # dist/ holds release-like binaries (not Go source); skip to avoid false IDE/lint noise
+  skip-dirs:
+    - dist
 
 linters:
   enable:

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os/exec"
@@ -218,6 +219,28 @@ func (m *Manager) runTunnel(ctx context.Context, t *Tunnel, localProxy *proxy.Lo
 // the existing LocalProxy (which handles path routing, demo mode, etc.)
 // and returns the response to be sent back to the relay.
 func forwardViaProxy(lp *proxy.LocalProxy, port int, req *requestData) *responseData {
+	// Browser → relay → CLI uses a single HTTP round-trip per request. A real
+	// WebSocket upgrade needs a hijacked, bidirectional connection — we cannot
+	// proxy that through the tunnel yet. Fail fast with a clear JSON body so
+	// clients do not get a broken 101/half-open state (Next/Vite HMR over public
+	// URL still won't work until tunnel WS is implemented).
+	if isForwardedWebSocket(req) {
+		payload, _ := json.Marshal(map[string]string{
+			"error":   "websocket_not_supported_through_tunnel",
+			"message": "Browser WebSocket upgrades are not supported through the tunr cloud tunnel yet (HMR/live reload over the public URL will not work). Use a production build (e.g. next build && next start), test on localhost, or see README troubleshooting for Next.js allowedDevOrigins.",
+		})
+		return &responseData{
+			RequestID:  req.RequestID,
+			StatusCode: http.StatusBadGateway,
+			Headers: map[string]string{
+				"Content-Type":           "application/json",
+				"X-Tunr-WebSocket-Error": "true",
+			},
+			Body:    string(payload),
+			BodyB64: base64.StdEncoding.EncodeToString(payload),
+		}
+	}
+
 	requestBody, err := decodeWireBody(req.BodyB64, req.Body)
 	if err != nil {
 		return &responseData{
@@ -314,6 +337,53 @@ func cloneHeaderValues(h http.Header) map[string][]string {
 		result[key] = cloned
 	}
 	return result
+}
+
+func isForwardedWebSocket(req *requestData) bool {
+	if !strings.EqualFold(headerFirst(req, "Upgrade"), "websocket") {
+		return false
+	}
+	conn := strings.ToLower(headerJoin(req, "Connection"))
+	return strings.Contains(conn, "upgrade")
+}
+
+func headerFirst(req *requestData, name string) string {
+	canonical := http.CanonicalHeaderKey(name)
+	if len(req.HeadersV2) > 0 {
+		for k, vals := range req.HeadersV2 {
+			if http.CanonicalHeaderKey(k) != canonical || len(vals) == 0 {
+				continue
+			}
+			return vals[0]
+		}
+		return ""
+	}
+	for k, v := range req.Headers {
+		if http.CanonicalHeaderKey(k) == canonical {
+			return v
+		}
+	}
+	return ""
+}
+
+func headerJoin(req *requestData, name string) string {
+	canonical := http.CanonicalHeaderKey(name)
+	if len(req.HeadersV2) > 0 {
+		var parts []string
+		for k, vals := range req.HeadersV2 {
+			if http.CanonicalHeaderKey(k) != canonical {
+				continue
+			}
+			parts = append(parts, vals...)
+		}
+		return strings.Join(parts, ", ")
+	}
+	for k, v := range req.Headers {
+		if http.CanonicalHeaderKey(k) == canonical {
+			return v
+		}
+	}
+	return ""
 }
 
 // Remove stops a tunnel and evicts it from the map
