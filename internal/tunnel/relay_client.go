@@ -48,19 +48,19 @@ type welcomeData struct {
 }
 
 type requestData struct {
-	RequestID string            `json:"request_id"`
-	Method    string            `json:"method"`
-	Path      string            `json:"path"`
-	Headers   map[string]string `json:"headers"`
+	RequestID string              `json:"request_id"`
+	Method    string              `json:"method"`
+	Path      string              `json:"path"`
+	Headers   map[string]string   `json:"headers"`
 	HeadersV2 map[string][]string `json:"headers_v2,omitempty"`
 	Body      string              `json:"body,omitempty"`
 	BodyB64   string              `json:"body_b64,omitempty"`
 }
 
 type responseData struct {
-	RequestID  string            `json:"request_id"`
-	StatusCode int               `json:"status_code"`
-	Headers    map[string]string `json:"headers"`
+	RequestID  string              `json:"request_id"`
+	StatusCode int                 `json:"status_code"`
+	Headers    map[string]string   `json:"headers"`
 	HeadersV2  map[string][]string `json:"headers_v2,omitempty"`
 	Body       string              `json:"body,omitempty"`
 	BodyB64    string              `json:"body_b64,omitempty"`
