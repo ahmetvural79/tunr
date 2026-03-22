@@ -220,6 +220,18 @@ Checklist:
 
 Ayrıca CLI, tünelden gelen istekleri yerelde **`http://127.0.0.1:PORT`** ile karşılar (IPv4); Next yalnızca `localhost`/IPv6’da dinliyorsa sorun çıkmaması gerekir, yine de `next dev` çıktısında hangi adreste dinlendiğine bak.
 
+### `ERR_HTTP2_PROTOCOL_ERROR` on tunnel URL
+
+This usually means the browser aborted the main document due to an invalid HTTP/2 response shape (often header/body framing mismatch), not a normal JS runtime error.
+
+What changed in tunr to address this:
+
+1. **`Accept-Encoding` normalization in CLI** — tunnel forwarding now strips incoming browser `Accept-Encoding` before local proxying so Go transport handles gzip consistently.
+2. **HTTP/2-safe response headers in relay** — relay now drops hop-by-hop headers and `Content-Length` before writing tunnel responses back to clients.
+3. **IPv4 upstream normalization** — local forwarding uses `127.0.0.1` to avoid `localhost` IPv6 edge cases.
+
+If you self-host the relay, update **both** CLI and relay binaries. Updating only the CLI can still leave HTTP/2 framing issues on older relay builds.
+
 ### WebSocket / HMR over the public URL
 
 The tunr **edge relay** upgrades the public `wss://` connection and streams frames to your **CLI**, which opens a local `ws://` connection to your dev server. That gives you end-to-end HMR-style WebSockets without a separate tunnel product.
