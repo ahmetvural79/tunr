@@ -152,6 +152,9 @@ func (h *Handler) ServeTunnel(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
+	// Large HTML responses travel as JSON + base64 on this control socket.
+	conn.SetReadLimit(64 << 20) // 64 MiB
+
 	// Bağlantı kuralım ama önce hello mesajını bekle
 	_ = conn.SetReadDeadline(time.Now().Add(15 * time.Second))
 

@@ -229,7 +229,8 @@ func forwardViaProxy(lp *proxy.LocalProxy, port int, req *requestData) *response
 	}
 
 	bodyReader := bytes.NewReader(requestBody)
-	httpReq, err := http.NewRequest(req.Method, fmt.Sprintf("http://localhost:%d%s", port, req.Path), bodyReader)
+	// Use 127.0.0.1 (not "localhost") so we match IPv4-only dev servers and avoid ::1 surprises.
+	httpReq, err := http.NewRequest(req.Method, fmt.Sprintf("http://127.0.0.1:%d%s", port, req.Path), bodyReader)
 	if err != nil {
 		return &responseData{
 			RequestID:  req.RequestID,
@@ -250,6 +251,13 @@ func forwardViaProxy(lp *proxy.LocalProxy, port int, req *requestData) *response
 			httpReq.Header.Set(k, v)
 		}
 	}
+
+	// Strip Accept-Encoding so Go's Transport handles compression transparently:
+	// Transport adds Accept-Encoding: gzip automatically, decompresses the response,
+	// and removes Content-Encoding + Content-Length from response headers.
+	// This prevents Content-Length mismatches that cause ERR_HTTP2_PROTOCOL_ERROR
+	// and ensures the inject middleware always sees clean uncompressed HTML.
+	httpReq.Header.Del("Accept-Encoding")
 
 	rec := &bufferedResponseWriter{header: http.Header{}, statusCode: http.StatusOK}
 	lp.ServeHTTP(rec, httpReq)

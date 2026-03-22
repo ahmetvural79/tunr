@@ -129,6 +129,53 @@ func TestBrowserWebSocketRelayEchoRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBrowserWebSocketOpenCarriesForwardedHost(t *testing.T) {
+	reg := NewRegistry()
+	entry, err := reg.Register("ws-user", "wshost01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Unregister(entry.ID)
+
+	domain := "tunr.test"
+	p := NewProxy(reg, domain)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r2 := r.Clone(r.Context())
+		r2.Host = fmt.Sprintf("%s.%s", entry.Subdomain, domain)
+		p.ServeHTTP(w, r2)
+	}))
+	defer srv.Close()
+
+	wsURL := strings.Replace(srv.URL, "http://", "ws://", 1) + "/_next/webpack-hmr"
+	client, _, err := websocket.DefaultDialer.Dial(wsURL, http.Header{
+		"Origin": []string{"https://app.tunr.sh"},
+	})
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer client.Close()
+
+	select {
+	case outbound := <-entry.Outbound:
+		if outbound.Type != MsgTypeWsOpen {
+			t.Fatalf("expected ws_open, got %s", outbound.Type)
+		}
+		var open WsOpenData
+		if err := json.Unmarshal(outbound.Data, &open); err != nil {
+			t.Fatalf("unmarshal ws_open: %v", err)
+		}
+		if got := open.HeadersV2["X-Forwarded-Host"]; len(got) != 1 || got[0] != fmt.Sprintf("%s.%s", entry.Subdomain, domain) {
+			t.Fatalf("forwarded host mismatch: %#v", got)
+		}
+		if got := open.HeadersV2["X-Forwarded-Proto"]; len(got) != 1 || got[0] != "https" {
+			t.Fatalf("forwarded proto mismatch: %#v", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("did not receive ws_open")
+	}
+}
+
 func relayWSFrameEcho(ctx context.Context, entry *TunnelEntry) {
 	for {
 		select {

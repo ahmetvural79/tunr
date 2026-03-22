@@ -59,11 +59,15 @@ func (p *Proxy) serveBrowserWebSocket(w http.ResponseWriter, r *http.Request, en
 		_ = browserConn.Close()
 	}()
 
+	headersV2 := cloneHeaders(r.Header)
+	headersV2["X-Forwarded-Host"] = []string{r.Host}
+	headersV2["X-Forwarded-Proto"] = []string{"https"}
+
 	openData, _ := json.Marshal(WsOpenData{
 		StreamID:  streamID,
 		Path:      r.URL.RequestURI(),
-		Headers:   flattenHeaders(r.Header),
-		HeadersV2: cloneHeaders(r.Header),
+		Headers:   flattenHeaders(headersV2),
+		HeadersV2: headersV2,
 	})
 
 	select {

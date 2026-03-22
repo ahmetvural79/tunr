@@ -105,11 +105,21 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(key, v)
 		}
 	}
+
+	// HTTP/2 hop-by-hop header temizliği — bu header'lar HTTP/2'de yasak,
+	// ve Content-Length CLI tarafından gelebilir ama base64/JSON round-trip
+	// sonrası uyumsuzluk yaratabilir → Go'nun otomatik hesaplamasına bırak.
+	for _, h := range []string{
+		"Transfer-Encoding", "Connection", "Keep-Alive",
+		"Proxy-Connection", "Upgrade", "Content-Length",
+	} {
+		w.Header().Del(h)
+	}
+
 	// GÜVENLİK: Güvenlik header'larını her zaman set et
-	// CLI'nın unutması ihtimaline karşı
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-	w.Header().Del("Server") // sunucu bilgisi sızmasın
+	w.Header().Del("Server")
 
 	w.WriteHeader(resp.StatusCode)
 	w.Write(resp.Body)

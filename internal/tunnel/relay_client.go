@@ -109,6 +109,9 @@ func ConnectRelay(ctx context.Context, relayURL string, token string, port int, 
 		return nil, nil, fmt.Errorf("WebSocket dial failed: %w", err)
 	}
 
+	// Match relay read budget — responses include base64 bodies (large Next.js HTML).
+	conn.SetReadLimit(64 << 20)
+
 	rc := &RelayConn{conn: conn}
 
 	helloPayload, _ := json.Marshal(helloData{

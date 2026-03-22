@@ -207,9 +207,18 @@ npm run build && npm run start
 tunr share --port 3000
 ```
 
-### “Chrome offline” / dinosaur page when using `--inject-widget`
+### “Chrome offline” / “This site can’t be reached” / dinosaur page when using `--inject-widget`
 
-That HTML is the browser’s **network error** page — usually the **main document** failed to load (blocked dev assets, WebSocket/HMR issues, or a bad response), not the widget markup itself. Fix Next.js `allowedDevOrigins` (above) or use `next start` first.
+That page is the browser’s **network error** UI — the **main HTML document** never completed successfully (not the widget script failing in isolation).
+
+Checklist:
+
+1. **Tunnel alive** — `tunr share` terminal açık mı, “Tunnel active” satırı var mı? Kapandıysa public URL tamamen düşer → Chrome “can’t be reached” gösterebilir.
+2. **Next.js `allowedDevOrigins`** — Bölüm [Next.js: blank page](#nextjs-blank-page-over-tunr-share-port-3000) ayarını yapıp **dev server’ı yeniden başlat**. Bazı sürümlerde joker yerine tam host gerekir: `5752cce6.tunr.sh` gibi kendi subdomain’ini ekle.
+3. **Hızlı teşhis** — `curl -sI https://<subdomain>.tunr.sh/` ile edge’den yanıt alınıyor mu? `tunr doctor` ile lokal port dinleniyor mu?
+4. **Kararlı demo** — Hâlâ takılıyorsa `next build && next start` + `tunr share --port 3000` (widget isteğe bağlı) ile ayır.
+
+Ayrıca CLI, tünelden gelen istekleri yerelde **`http://127.0.0.1:PORT`** ile karşılar (IPv4); Next yalnızca `localhost`/IPv6’da dinliyorsa sorun çıkmaması gerekir, yine de `next dev` çıktısında hangi adreste dinlendiğine bak.
 
 ### WebSocket / HMR over the public URL
 

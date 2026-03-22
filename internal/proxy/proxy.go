@@ -86,7 +86,7 @@ func NewLocalProxy(port int, pathRoutes map[string]int) (*LocalProxy, error) {
 		}
 	}
 
-	localAddr := fmt.Sprintf("http://localhost:%d", port)
+	localAddr := fmt.Sprintf("http://127.0.0.1:%d", port)
 	localURL, err := url.Parse(localAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse local URL: %w", err)
@@ -113,7 +113,7 @@ func NewLocalProxy(port int, pathRoutes map[string]int) (*LocalProxy, error) {
 				}
 			}
 			if bestPort > 0 {
-				req.URL.Host = fmt.Sprintf("localhost:%d", bestPort)
+				req.URL.Host = fmt.Sprintf("127.0.0.1:%d", bestPort)
 			}
 		}
 	}

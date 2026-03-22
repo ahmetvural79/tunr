@@ -170,7 +170,15 @@ func (w *injectMiddlewareResponseWriter) Write(b []byte) (int, error) {
 }
 
 func (w *injectMiddlewareResponseWriter) flush() {
-	if !w.canInject || w.bodyBuf.Len() == 0 {
+	if !w.canInject {
+		return
+	}
+	// Buffered HTML path: if the upstream never wrote a body (204/304/HEAD edge cases),
+	// we must still commit status + headers. Otherwise the tunnel sees an empty response.
+	if w.bodyBuf.Len() == 0 {
+		if w.statusCode > 0 {
+			w.ResponseWriter.WriteHeader(w.statusCode)
+		}
 		return
 	}
 
