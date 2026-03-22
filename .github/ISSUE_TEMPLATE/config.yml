@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability report
+    url: https://github.com/ahmetvural79/tunr/security/advisories/new
+    about: Please use private security advisories for vulnerabilities.
+  - name: Questions and discussion
+    url: https://github.com/ahmetvural79/tunr/discussions
+    about: Ask usage questions or discuss ideas.

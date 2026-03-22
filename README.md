@@ -389,7 +389,7 @@ tunr takes security seriously for an open-source CLI tool:
 - No telemetry, no analytics, no phone-home by default
 - Supply chain integrity via `go mod verify` and govulncheck in CI
 
-Found a vulnerability? **Do not open a public issue.** See [SECURITY.md](docs/SECURITY.md).
+Found a vulnerability? **Do not open a public issue.** See [SECURITY.md](SECURITY.md).
 
 ---
 

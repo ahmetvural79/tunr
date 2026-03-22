@@ -12,6 +12,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+      id-token: write
+      attestations: write
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -41,6 +43,9 @@ jobs:
           (cd relay && govulncheck ./...) 2>&1 | tail -20
         continue-on-error: true
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.8.1
+
       - name: goreleaser ile release
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -51,3 +56,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Homebrew tap için ayrı token (farklı repo'ya write erişimi)
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          COSIGN_EXPERIMENTAL: "1"
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/**"
