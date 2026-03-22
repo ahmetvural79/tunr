@@ -211,26 +211,7 @@ tunr share --port 3000
 
 That page is the browser’s **network error** UI — the **main HTML document** never completed successfully (not the widget script failing in isolation).
 
-Checklist:
 
-1. **Tunnel alive** — `tunr share` terminal açık mı, “Tunnel active” satırı var mı? Kapandıysa public URL tamamen düşer → Chrome “can’t be reached” gösterebilir.
-2. **Next.js `allowedDevOrigins`** — Bölüm [Next.js: blank page](#nextjs-blank-page-over-tunr-share-port-3000) ayarını yapıp **dev server’ı yeniden başlat**. Bazı sürümlerde joker yerine tam host gerekir: `5752cce6.tunr.sh` gibi kendi subdomain’ini ekle.
-3. **Hızlı teşhis** — `curl -sI https://<subdomain>.tunr.sh/` ile edge’den yanıt alınıyor mu? `tunr doctor` ile lokal port dinleniyor mu?
-4. **Kararlı demo** — Hâlâ takılıyorsa `next build && next start` + `tunr share --port 3000` (widget isteğe bağlı) ile ayır.
-
-Ayrıca CLI, tünelden gelen istekleri yerelde **`http://127.0.0.1:PORT`** ile karşılar (IPv4); Next yalnızca `localhost`/IPv6’da dinliyorsa sorun çıkmaması gerekir, yine de `next dev` çıktısında hangi adreste dinlendiğine bak.
-
-### `ERR_HTTP2_PROTOCOL_ERROR` on tunnel URL
-
-This usually means the browser aborted the main document due to an invalid HTTP/2 response shape (often header/body framing mismatch), not a normal JS runtime error.
-
-What changed in tunr to address this:
-
-1. **`Accept-Encoding` normalization in CLI** — tunnel forwarding now strips incoming browser `Accept-Encoding` before local proxying so Go transport handles gzip consistently.
-2. **HTTP/2-safe response headers in relay** — relay now drops hop-by-hop headers and `Content-Length` before writing tunnel responses back to clients.
-3. **IPv4 upstream normalization** — local forwarding uses `127.0.0.1` to avoid `localhost` IPv6 edge cases.
-
-If you self-host the relay, update **both** CLI and relay binaries. Updating only the CLI can still leave HTTP/2 framing issues on older relay builds.
 
 ### WebSocket / HMR over the public URL
 
