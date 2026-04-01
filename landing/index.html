@@ -55,12 +55,11 @@
         <section class="hero container">
             <div class="hero-badge animate-in">
                 <div class="hero-badge-pulse"></div>
-                Tunr v0.2.0 is now live for macOS, Linux, and Windows
+                tunr v0.3.0 — TCP tunnels, multi-region, Python & Node.js SDKs
             </div>
 
             <h1 class="animate-in animate-in-delay-1">Expose your local server <br />in 3 seconds.</h1>
-            <p class="animate-in animate-in-delay-2">Secure tunnels, automatic HTTPS, and zero configuration. The developer-first alternative to ngrok, packed
-                with superpowers for client demos.</p>
+            <p class="animate-in animate-in-delay-2">HTTPS & TCP tunnels, multi-region routing, SDKs, QR code sharing, and zero configuration.</p>
 
             <div class="hero-actions animate-in animate-in-delay-3">
                 <a href="#install" class="btn btn-primary btn-lg">Install CLI</a>
@@ -80,6 +79,7 @@
                 <div class="terminal-tabs">
                     <button class="terminal-tab active" data-tab="sharing">Sharing</button>
                     <button class="terminal-tab" data-tab="demo">Demo Mode</button>
+                    <button class="terminal-tab" data-tab="tcp">TCP Tunnels</button>
                     <button class="terminal-tab" data-tab="inspect">Inspect</button>
                 </div>
                 <div class="terminal-body">
@@ -108,6 +108,18 @@
                         <span class="cmd-info">→</span> <span class="cmd-text">POST</span> /api/orders <span class="cmd-success">201</span> <span class="cmd-dim">45ms</span><br />
                         <span class="cmd-info">→</span> <span class="cmd-text">GET</span> /dashboard <span class="cmd-success">200</span> <span class="cmd-dim">8ms</span><br />
                         <span class="cmd-info">→</span> <span class="cmd-text">DELETE</span> /api/users/42 <span style="color: var(--accent-orange);">403</span> <span class="cmd-dim">2ms (demo blocked)</span>
+                    </div>
+                    <div class="terminal-panel" data-panel="tcp">
+                        <span class="cmd-prompt">~</span> <span class="cmd-text">tunr tcp --port 5432 --region ams --qr</span><br /><br />
+                        <span class="cmd-dim">Connecting to edge relay...</span><br />
+                        <span class="cmd-success">✓</span> TCP tunnel established<br /><br />
+                        <span class="cmd-url">tcp://ams-db.tunr.sh:443</span> → localhost:5432<br /><br />
+                        <span class="cmd-dim">Proxy features active:</span><br />
+                        <span class="cmd-success">  ✓</span> Raw TCP forwarding (no HTTP parsing)<br />
+                        <span class="cmd-success">  ✓</span> Region: Amsterdam (ams)<br />
+                        <span class="cmd-success">  ✓</span> QR code generated<br /><br />
+                        <span class="cmd-dim">Connect with:</span><br />
+                        <span class="cmd-prompt">~</span> <span class="cmd-text">psql -h ams-db.tunr.sh -p 443 -U myuser mydb</span>
                     </div>
                 </div>
             </div>
@@ -238,6 +250,38 @@
                         <div class="code-snippet">tunr share -p 3000 --json</div>
                     </div>
 
+                    <!-- QR Code -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #a855f7;">📱</div>
+                        <h3>QR Code for Mobile Testing</h3>
+                        <p>Generate a scannable QR code instantly so you can open the tunnel URL on mobile devices or share with clients without typing long URLs.</p>
+                        <div class="code-snippet">tunr share -p 3000 --qr</div>
+                    </div>
+
+                    <!-- Bearer Token Auth -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #f59e0b;">🔑</div>
+                        <h3>Bearer Token Access</h3>
+                        <p>Protect your tunnel with a simple API key. Every request must include <code>Authorization: Bearer &lt;token&gt;</code> or <code>?token=&lt;value&gt;</code> in the query string.</p>
+                        <div class="code-snippet">tunr share -p 3000 --auth-token "my-secret"</div>
+                    </div>
+
+                    <!-- IP Whitelisting -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #10b981;">🛡️</div>
+                        <h3>IP Whitelisting</h3>
+                        <p>Restrict tunnel access to specific CIDR ranges. Only whitelisted IP ranges can reach your local server — ideal for staging environments and team access.</p>
+                        <div class="code-snippet">tunr share -p 3000 --allow-ip "10.0.0.0/8"</div>
+                    </div>
+
+                    <!-- Header Modification -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #06b6d4;">🔧</div>
+                        <h3>Live Header Modification</h3>
+                        <p>Add, replace, or remove HTTP headers on the fly before they reach your local server. Perfect for debugging, internal routing, and stripping fingerprinting headers.</p>
+                        <div class="code-snippet">tunr share -p 3000 --header-add "X-Debug: 1"</div>
+                    </div>
+
                 </div>
             </div>
         </section>
@@ -275,6 +319,16 @@
                             <div><span class="cmd-prompt">$</span><span class="cmd-text">tunr share -p 3000 --freeze --inject-widget --demo</span></div>
                             <div class="command-output-success">✓ https://random.tunr.sh → localhost:3000</div>
                             <div class="command-output-dim">&nbsp; anti-crash cache enabled · feedback widget active · read-only mode</div>
+
+                            <div class="cmd-comment" style="margin-top: 16px;"># QR code + security</div>
+                            <div><span class="cmd-prompt">$</span><span class="cmd-text">tunr share -p 3000 --qr --allow-ip "10.0.0.0/8" --auth-token "key123"</span></div>
+                            <div class="command-output-success">✓ https://secure.tunr.sh → localhost:3000</div>
+                            <div class="command-output-dim">&nbsp; QR displayed · IP whitelisted · bearer token required</div>
+
+                            <div class="cmd-comment" style="margin-top: 16px;"># Modify headers before forwarding</div>
+                            <div><span class="cmd-prompt">$</span><span class="cmd-text">tunr share -p 3000 --header-add "X-Env: staging" --header-remove "X-Powered-By"</span></div>
+                            <div class="command-output-success">✓ https://debug.tunr.sh → localhost:3000</div>
+                            <div class="command-output-dim">&nbsp; X-Env injected · X-Powered-By stripped</div>
 
                             <div class="cmd-comment" style="margin-top: 16px;"># Password protect and auto-expire</div>
                             <div><span class="cmd-prompt">$</span><span class="cmd-text">tunr share -p 8080 --password "secret" --ttl 30m</span></div>
@@ -327,6 +381,22 @@
                         <div class="command-card">
                             <div class="command-card-name">tunr uninstall</div>
                             <div class="command-card-desc">Remove tunr from your system</div>
+                        </div>
+                        <div class="command-card">
+                            <div class="command-card-name">--qr</div>
+                            <div class="command-card-desc">Display QR code for scanning</div>
+                        </div>
+                        <div class="command-card">
+                            <div class="command-card-name">--auth-token</div>
+                            <div class="command-card-desc">Bearer token authentication</div>
+                        </div>
+                        <div class="command-card">
+                            <div class="command-card-name">--allow-ip</div>
+                            <div class="command-card-desc">CIDR-based IP whitelisting</div>
+                        </div>
+                        <div class="command-card">
+                            <div class="command-card-name">--header-add / remove</div>
+                            <div class="command-card-desc">Live header manipulation</div>
                         </div>
                     </div>
                 </div>
@@ -476,6 +546,12 @@
                 <p>Built by <a href="https://x.com/vural_met" target="_blank" style="color: var(--text-secondary); text-decoration: underline;">ahmet vural</a> and <a href="https://theglycode.com" target="_blank" style="color: var(--text-secondary); text-decoration: underline;">theUglyCode</a></p>
             </div>
             <div class="footer-links">
+                <a href="use-scenarios.html">Use Scenarios</a>
+                <a href="docs.html">Documentation</a>
+                <a href="tunr-vs-ngrok.html">tunr vs ngrok</a>
+                <a href="tunr-vs-cloudflare.html">tunr vs Cloudflare</a>
+                <a href="tunr-vs-pinggy.html">tunr vs Pinggy</a>
+                <a href="tunr-vs-localxpose.html">tunr vs LocalXpose</a>
                 <a href="terms.html">Terms</a>
                 <a href="privacy.html">Privacy Policy</a>
                 <a href="refund.html">Refund Policy</a>

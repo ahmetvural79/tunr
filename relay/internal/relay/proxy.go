@@ -1,6 +1,8 @@
 package relay
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/ahmetvural79/tunr/relay/internal/logger"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 )
 
 // Proxy — gelen HTTP isteklerini doğru tunnel'a yönlendirir.
@@ -20,7 +23,7 @@ import (
 //   → istek WS üzerinden CLI'ya iletilir
 //   → CLI local:3000/api/users'a forward eder
 //   → cevap WS üzerinden relay'e döner
-//   → relay HTTP yanıtı olarak dışarıya gönderir
+//   → relay HTTP yanıtı olarak dışarıya döner
 
 // Proxy — HTTP istek proxy'si
 type Proxy struct {
@@ -54,6 +57,16 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Tunnel hala aktif mi?
 	if !entry.IsAlive() {
 		writeTunnelGone(w, subdomain)
+		return
+	}
+
+	// TCP tunnel: browser'lara WebSocket endpoint bilgisi ver
+	if entry.Protocol == "tcp" {
+		if isBrowserWebSocket(r) {
+			p.serveBrowserTCP(w, r, entry)
+			return
+		}
+		p.writeTCPInfo(w, subdomain, entry)
 		return
 	}
 
@@ -106,9 +119,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// HTTP/2 hop-by-hop header temizliği — bu header'lar HTTP/2'de yasak,
-	// ve Content-Length CLI tarafından gelebilir ama base64/JSON round-trip
-	// sonrası uyumsuzluk yaratabilir → Go'nun otomatik hesaplamasına bırak.
+	// HTTP/2 hop-by-hop header temizliği
 	for _, h := range []string{
 		"Transfer-Encoding", "Connection", "Keep-Alive",
 		"Proxy-Connection", "Upgrade", "Content-Length",
@@ -153,6 +164,99 @@ func realIP(r *http.Request) string {
 		return strings.Split(ip, ",")[0]
 	}
 	return strings.Split(r.RemoteAddr, ":")[0]
+}
+
+// serveBrowserTCP — browser'dan gelen TCP WebSocket bağlantısını CLI'a proxy'ler
+func (p *Proxy) serveBrowserTCP(w http.ResponseWriter, r *http.Request, entry *TunnelEntry) {
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		logger.Warn("TCP WS upgrade başarısız: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	conn.SetReadLimit(64 << 20)
+
+	streamID := uuid.New().String()[:8]
+	entry.StoreBrowserTCP(streamID, conn)
+	defer entry.RemoveBrowserTCP(streamID)
+
+	// CLI'a TCP açma bildirimi gönder
+	openData, _ := json.Marshal(TCPOpenData{
+		StreamID:   streamID,
+		RemoteAddr: r.RemoteAddr,
+	})
+	entry.Outbound <- Message{Type: MsgTypeTCPOpen, Data: openData}
+
+	// İki yönlü TCP data relay
+	errCh := make(chan error, 2)
+
+	// Browser → CLI (binary data → tcp_data)
+	go func() {
+		for {
+			msgType, payload, err := conn.ReadMessage()
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if msgType == websocket.CloseMessage {
+				closeData, _ := json.Marshal(TCPClosePayload{
+					StreamID: streamID,
+					Reason:   "browser_closed",
+				})
+				entry.Outbound <- Message{Type: MsgTypeTCPClose, Data: closeData}
+				errCh <- io.EOF
+				return
+			}
+			if msgType != websocket.BinaryMessage {
+				continue
+			}
+			encoded := base64.StdEncoding.EncodeToString(payload)
+			tcpData, _ := json.Marshal(TCPDataPayload{
+				StreamID:   streamID,
+				PayloadB64: encoded,
+			})
+			entry.Outbound <- Message{Type: MsgTypeTCPData, Data: tcpData}
+		}
+	}()
+
+	<-errCh
+	logger.Info("TCP browser WS kapandı: %s (%s)", streamID, entry.ID)
+}
+
+// writeTCPInfo — TCP tunnel için bilgilendirme sayfası
+func (p *Proxy) writeTCPInfo(w http.ResponseWriter, subdomain string, entry *TunnelEntry) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TCP Tunnel — %s.tunr.sh</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #080b14; color: #f1f5f9;
+           display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .box { text-align: center; max-width: 500px; }
+    h1 { font-size: 32px; color: #00d4ff; margin-bottom: 16px; }
+    p  { color: #94a3b8; line-height: 1.6; }
+    code { background: #0d1220; padding: 3px 8px; border-radius: 4px; color: #00d4ff; }
+    a  { color: #00d4ff; }
+    .ws-link { display: inline-block; margin-top: 16px; padding: 8px 16px;
+               background: #00d4ff; color: #080b14; border-radius: 6px;
+               text-decoration: none; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>🔌 TCP Tunnel Active</h1>
+    <p>Tunnel <code>%s.tunr.sh</code> is forwarding raw TCP traffic to localhost:%d.</p>
+    <p>Connect using a TCP client or the tunr CLI.</p>
+    <p>WebSocket endpoint: <code>wss://%s.tunr.sh/tunnel/tcp?subdomain=%s</code></p>
+    <p><a href="https://tunr.sh/docs/tcp" class="ws-link">TCP Tunnel Docs →</a></p>
+  </div>
+</body>
+</html>`, subdomain, subdomain, entry.LocalPort, subdomain, subdomain)
 }
 
 // ─── Hata sayfaları ─────────────────────────────────────────────────────────

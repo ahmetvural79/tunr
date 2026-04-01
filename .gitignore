@@ -60,6 +60,7 @@ docs/
 
 # Relay server (proprietary infrastructure)
 relay/migrations/
+relay/server
 
 # Freemium / internal — keep locally, do not publish
 .tunr.schema.json

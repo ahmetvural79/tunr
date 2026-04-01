@@ -13,6 +13,7 @@ import (
 	"github.com/ahmetvural79/tunr/relay/internal/auth"
 	relaydb "github.com/ahmetvural79/tunr/relay/internal/db"
 	"github.com/ahmetvural79/tunr/relay/internal/logger"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -42,6 +43,11 @@ const (
 	MsgTypeWsOpen   MsgType = "ws_open"  // relay → CLI: browser WS tunnel start
 	MsgTypeWsFrame  MsgType = "ws_frame" // bidirectional WS payload
 	MsgTypeWsClose  MsgType = "ws_close" // bidirectional WS shutdown
+
+	// TCP tunnel message types
+	MsgTypeTCPOpen  MsgType = "tcp_open"  // relay → CLI: new inbound TCP connection
+	MsgTypeTCPData  MsgType = "tcp_data"  // bidirectional: raw TCP payload (base64)
+	MsgTypeTCPClose MsgType = "tcp_close" // bidirectional: TCP connection shutdown
 )
 
 // Message — WS üzerinden gönderilen JSON mesajı
@@ -56,6 +62,8 @@ type HelloData struct {
 	LocalPort int    `json:"local_port"` // bilgi amaçlı
 	Subdomain string `json:"subdomain"`  // tercih edilen subdomain (opsiyonel)
 	Version   string `json:"version"`    // tunr CLI versiyonu
+	Protocol  string `json:"protocol,omitempty"` // "http" (default) or "tcp"
+	Region    string `json:"region,omitempty"`   // preferred relay region
 }
 
 // WelcomeData — relay'in ilk yanıtı
@@ -106,6 +114,24 @@ type WsCloseData struct {
 	StreamID string `json:"stream_id"`
 	Code     int    `json:"code"`
 	Reason   string `json:"reason"`
+}
+
+// TCPDataPayload — raw TCP data between CLI ↔ relay
+type TCPDataPayload struct {
+	StreamID   string `json:"stream_id"`
+	PayloadB64 string `json:"payload_b64"`
+}
+
+// TCPClosePayload — TCP connection shutdown
+type TCPClosePayload struct {
+	StreamID string `json:"stream_id"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// TCPOpenData — relay → CLI: new inbound TCP connection
+type TCPOpenData struct {
+	StreamID   string `json:"stream_id"`
+	RemoteAddr string `json:"remote_addr,omitempty"`
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -213,7 +239,11 @@ func (h *Handler) ServeTunnel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Tunnel kayıt et
-	entry, err := h.registry.Register(userID, hello.Subdomain)
+	protocol := hello.Protocol
+	if protocol == "" {
+		protocol = "http"
+	}
+	entry, err := h.registry.RegisterWithProtocol(userID, hello.Subdomain, protocol, hello.Region)
 	if err != nil {
 		writeErr(conn, err.Error())
 		return
@@ -221,8 +251,8 @@ func (h *Handler) ServeTunnel(w http.ResponseWriter, r *http.Request) {
 	defer h.registry.Unregister(entry.ID)
 
 	// Log kaydı (DB'ye de yazılır)
-	logger.Info("Tunnel bağlandı: %s → %s (kullanıcı: %s)",
-		entry.ID, entry.PublicURL(h.domain), userID)
+	logger.Info("Tunnel bağlandı: %s → %s (kullanıcı: %s, proto: %s)",
+		entry.ID, entry.PublicURL(h.domain), userID, protocol)
 
 	if h.db != nil {
 		_ = h.db.RecordTunnelConnect(r.Context(), entry.ID, userID, entry.Subdomain)
@@ -374,6 +404,30 @@ func (h *Handler) handleClientMessage(entry *TunnelEntry, msg *Message) error {
 
 	case MsgTypeClose:
 		return io.EOF // bağlantıyı kapat
+
+	case MsgTypeTCPData:
+		// CLI is sending data from local service → relay (to forward to browser TCP client)
+		var d TCPDataPayload
+		if err := json.Unmarshal(msg.Data, &d); err != nil {
+			return nil
+		}
+		raw, err := base64.StdEncoding.DecodeString(d.PayloadB64)
+		if err != nil {
+			logger.Warn("tcp_data bad base64 stream=%s: %v", d.StreamID, err)
+			return nil
+		}
+		if err := entry.WriteTCPDataToBrowser(d.StreamID, raw); err != nil {
+			logger.Debug("tcp_data to browser skipped stream=%s: %v", d.StreamID, err)
+		}
+
+	case MsgTypeTCPClose:
+		// CLI is closing its side of a TCP connection
+		var cl TCPClosePayload
+		if err := json.Unmarshal(msg.Data, &cl); err != nil {
+			return nil
+		}
+		code := websocket.CloseNormalClosure
+		entry.CloseBrowserTCP(cl.StreamID, code, cl.Reason)
 	}
 	return nil
 }
@@ -433,4 +487,95 @@ func decodeWireBody(bodyB64, body string) ([]byte, error) {
 		return base64.StdEncoding.DecodeString(bodyB64)
 	}
 	return []byte(body), nil
+}
+
+// ServeBrowserTCP — browser WebSocket → TCP tunnel proxy.
+// Browsers connect to wss://tun.tcp.sh/tunnel/tcp to forward TCP traffic.
+func (h *Handler) ServeBrowserTCP(w http.ResponseWriter, r *http.Request) {
+	// Upgrade to WebSocket
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		logger.Warn("TCP WS upgrade başarısız: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	conn.SetReadLimit(64 << 20)
+
+	// Extract subdomain from query or subdomain
+	subdomain := r.URL.Query().Get("subdomain")
+	if subdomain == "" {
+		// Try to extract from Host header
+		host := r.Host
+		subdomain = extractSubdomain(host, h.domain)
+	}
+	if subdomain == "" {
+		http.Error(w, "subdomain required", http.StatusBadRequest)
+		return
+	}
+
+	entry, ok := h.registry.Lookup(subdomain)
+	if !ok {
+		writeTunnelNotFound(w, subdomain)
+		return
+	}
+	if !entry.IsAlive() {
+		writeTunnelGone(w, subdomain)
+		return
+	}
+	if entry.Protocol != "tcp" {
+		http.Error(w, "this is not a TCP tunnel", http.StatusBadRequest)
+		return
+	}
+
+	streamID := uuid.New().String()[:8]
+	entry.StoreBrowserTCP(streamID, conn)
+	defer entry.RemoveBrowserTCP(streamID)
+
+	// Notify CLI about new TCP connection
+	openData, _ := json.Marshal(TCPOpenData{
+		StreamID:   streamID,
+		RemoteAddr: r.RemoteAddr,
+	})
+	entry.Outbound <- Message{Type: MsgTypeTCPOpen, Data: openData}
+
+	// Bidirectional data relay between browser and CLI
+	errCh := make(chan error, 2)
+
+	// Browser → CLI (websocket.BinaryMessage → tcp_data)
+	go func() {
+		for {
+			msgType, payload, err := conn.ReadMessage()
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if msgType == websocket.CloseMessage {
+				// Forward close to CLI
+				closeData, _ := json.Marshal(TCPClosePayload{
+					StreamID: streamID,
+					Reason:   "browser_closed",
+				})
+				entry.Outbound <- Message{Type: MsgTypeTCPClose, Data: closeData}
+				errCh <- io.EOF
+				return
+			}
+			if msgType != websocket.BinaryMessage {
+				continue // Ignore non-binary messages
+			}
+			encoded := base64.StdEncoding.EncodeToString(payload)
+			tcpPayload, _ := json.Marshal(TCPDataPayload{
+				StreamID:   streamID,
+				PayloadB64: encoded,
+			})
+			entry.Outbound <- Message{Type: MsgTypeTCPData, Data: tcpPayload}
+		}
+	}()
+
+	// CLI → Browser handled by ServeTunnel writing to WriteTCPDataToBrowser
+	// We read WS messages from CLI that carry binary TCP data
+
+	// Wait for browser to disconnect
+	<-errCh
+	logger.Info("TCP browser client disconnected: %s", streamID)
 }

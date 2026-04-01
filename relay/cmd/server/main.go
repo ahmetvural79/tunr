@@ -73,6 +73,10 @@ func main() {
 	// tunr CLI bu endpoint'e WebSocket bağlantısı açar
 	mux.HandleFunc("/tunnel/connect", handler.ServeTunnel)
 
+	// ── Browser TCP WebSocket endpoint ──
+	// Browsers connect to TCP tunnels via WebSocket
+	mux.HandleFunc("/tunnel/tcp", handler.ServeBrowserTCP)
+
 	// ── Auth endpoints ──
 	mux.HandleFunc("/auth/magic", handleMagicRequest(database, jwtAuth, cfg.Domain))
 	mux.HandleFunc("/auth/verify", handleMagicVerify(database, jwtAuth))

@@ -38,6 +38,7 @@ type Tunnel struct {
 	PublicURL string
 	Status    TunnelStatus
 	StartedAt time.Time
+	Protocol  TunnelProtocol // http or tcp
 
 	requestCount atomic.Int64 // atomic so we don't need a lock for reads
 
@@ -76,37 +77,10 @@ func (m *Manager) SetAuthToken(token string) {
 
 // Start creates a tunnel and returns once the public URL is live.
 // Works with both Cloudflare quicktunnels and custom relays.
+// For TCP protocol, skips HTTP proxy and uses raw TCP forwarding.
 func (m *Manager) Start(ctx context.Context, port int, opts StartOptions) (*Tunnel, error) {
 	if err := validatePort(port); err != nil {
 		return nil, err
-	}
-
-	routes := map[string]int{"/": port}
-	if len(opts.PathRoutes) > 0 {
-		routes = opts.PathRoutes
-		// fall back to base port for root if the user didn't specify one
-		if _, ok := routes["/"]; !ok && port > 0 {
-			routes["/"] = port
-		}
-	}
-
-	localProxy, err := proxy.NewLocalProxy(port, routes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start local proxy: %w", err)
-	}
-
-	localProxy.DemoMode = opts.DemoMode
-	localProxy.InjectWidget = opts.InjectWidget
-	localProxy.AutoLogin = opts.AutoLogin
-	localProxy.Password = opts.Password // Basic Auth Password Protection
-	if opts.Freeze {
-		localProxy.Freeze = proxy.NewFreezeCache(true)
-	}
-
-	localProxy.BuildMiddlewareChain()
-
-	if err := localProxy.HealthCheck(ctx); err != nil {
-		return nil, fmt.Errorf("can't reach port %d — start your app first, then run tunr", port)
 	}
 
 	id := uuid.New().String()[:8]
@@ -118,6 +92,7 @@ func (m *Manager) Start(ctx context.Context, port int, opts StartOptions) (*Tunn
 		Status:    StatusConnecting,
 		StartedAt: time.Now(),
 		cancel:    cancel,
+		Protocol:  opts.Protocol,
 	}
 
 	m.mu.Lock()
@@ -132,16 +107,82 @@ func (m *Manager) Start(ctx context.Context, port int, opts StartOptions) (*Tunn
 		logger.Info("⏳ This tunnel will auto-expire in %v", opts.TTL)
 	}
 
-	go func() {
-		if err := m.runTunnel(tunnelCtx, t, localProxy, opts); err != nil {
-			if err != context.Canceled {
-				logger.Error("Tunnel %s failed: %v", id, err)
+	// TCP tunnel: skip HTTP proxy, relay handles raw TCP forwarding
+	if opts.Protocol == ProtocolTCP {
+		go func() {
+			if err := m.runTCPTunnel(tunnelCtx, t, opts); err != nil {
+				if err != context.Canceled {
+					logger.Error("TCP tunnel %s failed: %v", id, err)
+				}
+				t.mu.Lock()
+				t.Status = StatusDisconnected
+				t.mu.Unlock()
 			}
-			t.mu.Lock()
-			t.Status = StatusDisconnected
-			t.mu.Unlock()
+		}()
+	} else {
+		// HTTP tunnel: full proxy setup as before
+		routes := map[string]int{"/": port}
+		if len(opts.PathRoutes) > 0 {
+			routes = opts.PathRoutes
+			if _, ok := routes["/"]; !ok && port > 0 {
+				routes["/"] = port
+			}
 		}
-	}()
+
+		localProxy, err := proxy.NewLocalProxy(port, routes)
+		if err != nil {
+			m.Remove(id)
+			return nil, fmt.Errorf("failed to start local proxy: %w", err)
+		}
+
+		localProxy.DemoMode = opts.DemoMode
+		localProxy.InjectWidget = opts.InjectWidget
+		localProxy.AutoLogin = opts.AutoLogin
+		localProxy.Password = opts.Password
+		if opts.Freeze {
+			localProxy.Freeze = proxy.NewFreezeCache(true)
+		}
+
+		if len(opts.AllowedIPs) > 0 {
+			wl := proxy.NewIPWhitelist(opts.AllowedIPs)
+			localProxy.IPWhitelist = &wl
+		}
+		localProxy.BearerToken = opts.BearerToken
+		localProxy.QREnabled = opts.QREnabled
+		localProxy.XForwardedFor = opts.XForwardedFor
+		localProxy.OriginalURL = opts.OriginalURL
+		localProxy.CorsOrigins = opts.CorsOrigins
+
+		if len(opts.HeaderRules) > 0 {
+			rules := make([]proxy.HeaderModification, len(opts.HeaderRules))
+			for i, r := range opts.HeaderRules {
+				rules[i] = proxy.HeaderModification{
+					Action: r.Action,
+					Header: r.Header,
+					Value:  r.Value,
+				}
+			}
+			localProxy.HeaderRules = rules
+		}
+
+		localProxy.BuildMiddlewareChain()
+
+		if err := localProxy.HealthCheck(ctx); err != nil {
+			m.Remove(id)
+			return nil, fmt.Errorf("can't reach port %d — start your app first, then run tunr", port)
+		}
+
+		go func() {
+			if err := m.runTunnel(tunnelCtx, t, localProxy, opts); err != nil {
+				if err != context.Canceled {
+					logger.Error("Tunnel %s failed: %v", id, err)
+				}
+				t.mu.Lock()
+				t.Status = StatusDisconnected
+				t.mu.Unlock()
+			}
+		}()
+	}
 
 	// poll until the public URL is ready (max 15s)
 	deadline := time.NewTimer(15 * time.Second)
@@ -186,7 +227,7 @@ func (m *Manager) runTunnel(ctx context.Context, t *Tunnel, localProxy *proxy.Lo
 			logger.Info("Reconnecting... (attempt %d)", attempt)
 		}
 
-		rc, welcome, err := ConnectRelay(ctx, m.relayURL, m.authToken, t.LocalPort, opts.Subdomain, Version)
+		rc, welcome, err := ConnectRelay(ctx, m.relayURL, m.authToken, t.LocalPort, opts.Subdomain, Version, opts.Region)
 		if err != nil {
 			return fmt.Errorf("failed to connect to relay: %w", err)
 		}
@@ -202,6 +243,39 @@ func (m *Manager) runTunnel(ctx context.Context, t *Tunnel, localProxy *proxy.Lo
 			t.requestCount.Add(1)
 			return forwardViaProxy(localProxy, t.LocalPort, req)
 		})
+
+		t.mu.Lock()
+		t.Status = StatusDisconnected
+		t.mu.Unlock()
+
+		if err == context.Canceled {
+			return nil
+		}
+		return err
+	})
+}
+
+// runTCPTunnel connects to the relay for a TCP tunnel and forwards raw TCP data.
+func (m *Manager) runTCPTunnel(ctx context.Context, t *Tunnel, opts StartOptions) error {
+	return WithRetry(ctx, DefaultRetryConfig, func(ctx context.Context, attempt int) error {
+		if attempt > 1 {
+			logger.Info("TCP tunnel reconnecting... (attempt %d)", attempt)
+		}
+
+		rc, welcome, err := ConnectRelayTCP(ctx, m.relayURL, m.authToken, t.LocalPort, opts.Subdomain, Version, opts.Region)
+		if err != nil {
+			return fmt.Errorf("failed to connect to relay for TCP: %w", err)
+		}
+
+		t.mu.Lock()
+		t.PublicURL = welcome.PublicURL
+		t.Status = StatusActive
+		t.mu.Unlock()
+
+		logger.Info("TCP tunnel active: localhost:%d → %s", t.LocalPort, welcome.PublicURL)
+
+		// Run the TCP data loop
+		err = rc.RunTCPLoop(ctx, t.LocalPort)
 
 		t.mu.Lock()
 		t.Status = StatusDisconnected
@@ -367,8 +441,26 @@ func (m *Manager) StopAll() {
 	logger.Info("All tunnels shut down.")
 }
 
+// Tunnel Protocol types
+type TunnelProtocol string
+
+const (
+	ProtocolHTTP TunnelProtocol = "http"
+	ProtocolTCP  TunnelProtocol = "tcp"
+)
+
+// HeaderRule represents a single live header modification rule.
+type HeaderRule struct {
+	Action string // "add", "replace", "remove"
+	Header string // header name
+	Value  string // new value (for add/replace)
+}
+
 // StartOptions holds everything you can tweak when starting a tunnel
 type StartOptions struct {
+	Protocol TunnelProtocol // http (default) or tcp
+	Region   string         // preferred relay region (e.g. "ams", "sea", "sin")
+
 	Subdomain string
 	Domain    string
 	HTTPS     bool
@@ -379,9 +471,16 @@ type StartOptions struct {
 	InjectWidget bool
 	AutoLogin    string
 
-	Password   string
-	TTL        time.Duration
-	PathRoutes map[string]int
+	Password        string
+	TTL             time.Duration
+	PathRoutes      map[string]int
+	AllowedIPs      []string         // IP whitelist (CIDR notation)
+	HeaderRules     []HeaderRule     // Live header modification rules
+	BearerToken     string           // Bearer token access control
+	QREnabled       bool             // Show QR code in terminal
+	XForwardedFor   bool             // Inject X-Forwarded-For header
+	OriginalURL     bool             // Inject X-Original-URL header
+	CorsOrigins     []string         // CORS preflight allowed origins
 }
 
 // validatePort makes sure you're not asking for something silly

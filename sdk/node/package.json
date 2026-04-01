@@ -1,0 +1,34 @@
+{
+  "name": "@tunr/cli",
+  "version": "0.3.0",
+  "description": "Official Node.js SDK for tunr — localhost tunneling made simple.",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src/"
+  },
+  "keywords": [
+    "tunnel",
+    "localhost",
+    "proxy",
+    "tunr",
+    "cli"
+  ],
+  "author": "tunr",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ahmetvural79/tunr.git"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}

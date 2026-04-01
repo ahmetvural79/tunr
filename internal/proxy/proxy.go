@@ -35,6 +35,15 @@ type LocalProxy struct {
 	// Advanced Features
 	Password string // Basic Auth credentials
 
+	// Pinggy-Inspired Features
+	IPWhitelist    *IPWhitelist
+	BearerToken    string
+	HeaderRules    []HeaderModification
+	QREnabled      bool
+	XForwardedFor  bool
+	OriginalURL    bool
+	CorsOrigins    []string
+
 	// Traffic stats for the curious
 	mu           sync.RWMutex
 	requestCount int64
@@ -227,15 +236,28 @@ func (p *LocalProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // BuildMiddlewareChain assembles the middleware stack based on proxy settings.
 // Call this after all flags/config have been applied — order matters here.
+//
+// Request flow (outermost → innermost):
+//  1. IP Whitelist       — reject unauthorized IPs immediately
+//  2. Bearer Token Auth  — validate API key / bearer token
+//  3. CORS Preflight     — handle OPTIONS requests
+//  4. Header Mods        — add/replace/remove headers
+//  5. X-Forwarded-For    — inject client IP
+//  6. X-Original-URL     — inject original URL
+//  7. Password (Basic)   — HTTP Basic Authentication
+//  8. Demo Mode          — block destructive HTTP methods
+//  9. Freeze Cache       — serve cached responses on crash
+// 10. Widget Inject      — inject feedback UI into HTML
+// 11. Reverse Proxy      — forward to local dev server
 func (p *LocalProxy) BuildMiddlewareChain() {
 	var h http.Handler = p.reverseProxy
 
-	// 0. Password Protection (innermost layer — checked first)
+	// Password Protection (innermost layer — checked first)
 	if p.Password != "" {
 		h = BasicAuthMiddleware(p.Password, h)
 	}
 
-	// 1. Freeze Mode (closest to upstream — catches crashes)
+	// Freeze Mode (closest to upstream — catches crashes)
 	if p.Freeze != nil && p.Freeze.enabled {
 		h = p.Freeze.Middleware(h)
 
@@ -249,14 +271,44 @@ func (p *LocalProxy) BuildMiddlewareChain() {
 		}
 	}
 
-	// 2. HTML Injector (Feedback widget)
+	// HTML Injector (Feedback widget)
 	if p.InjectWidget {
 		h = InjectMiddleware(h)
 	}
 
-	// 3. Demo Mode (outermost — intercepts before hitting local server)
+	// Demo Mode (intercepts before hitting local server)
 	if p.DemoMode {
 		h = DemoMiddleware(h)
+	}
+
+	// X-Forwarded-For (inject client IP)
+	if p.XForwardedFor {
+		h = XForwardedForMiddleware(h)
+	}
+
+	// X-Original-URL (inject original public URL)
+	if p.OriginalURL {
+		h = OriginalURLMiddleware(h)
+	}
+
+	// Header Modification (add/replace/remove headers)
+	if len(p.HeaderRules) > 0 {
+		h = HeaderModificationMiddleware(p.HeaderRules, h)
+	}
+
+	// CORS Preflight (handle OPTIONS requests)
+	if len(p.CorsOrigins) > 0 {
+		h = CORSPreflightMiddleware(p.CorsOrigins, h)
+	}
+
+	// Bearer Token Auth (validate API key / token)
+	if p.BearerToken != "" {
+		h = BearerTokenMiddleware(p.BearerToken, "", h)
+	}
+
+	// IP Whitelist (reject unauthorized IPs immediately — outermost)
+	if p.IPWhitelist != nil && !p.IPWhitelist.IsEmpty() {
+		h = p.IPWhitelist.Middleware(h)
 	}
 
 	p.handler = h

@@ -21,6 +21,8 @@ type TunnelEntry struct {
 	UserID    string
 	Subdomain string
 	LocalPort int
+	Protocol  string // "http" or "tcp"
+	Region    string // preferred relay region (e.g. "ams", "sea", "sin")
 
 	Requests chan *TunnelRequest
 	Done     chan struct{}
@@ -31,11 +33,14 @@ type TunnelEntry struct {
 	mu              sync.Mutex
 	pendingRequests map[string]*TunnelRequest // requestID → waiting request
 
-	// Outbound carries control messages to the CLI (ws_open, ws_frame from browser, ws_close).
+	// Outbound carries control messages to the CLI (ws_open, ws_frame from browser, ws_close, tcp_open, tcp_data, tcp_close).
 	Outbound chan Message
 
 	wsMu    sync.Mutex
 	wsPeers map[string]*websocket.Conn // tunr stream_id → browser WebSocket
+
+	tcpMu    sync.Mutex
+	tcpPeers map[string]*websocket.Conn // TCP stream_id → browser TCP websocket
 }
 
 // TunnelRequest — relay'in tunnel client'ına ilettiği HTTP isteği
@@ -77,6 +82,11 @@ func NewRegistry() *Registry {
 
 // Register — yeni tunnel kayıt et ve bir ID/subdomain ver
 func (r *Registry) Register(userID string, preferredSubdomain string) (*TunnelEntry, error) {
+	return r.RegisterWithProtocol(userID, preferredSubdomain, "http", "")
+}
+
+// RegisterWithProtocol — yeni tunnel kayıt et ve bir ID/subdomain ver
+func (r *Registry) RegisterWithProtocol(userID, preferredSubdomain, protocol, region string) (*TunnelEntry, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -102,6 +112,9 @@ func (r *Registry) Register(userID string, preferredSubdomain string) (*TunnelEn
 		ID:              id,
 		UserID:          userID,
 		Subdomain:       subdomain,
+		Protocol:        protocol,
+		Region:          region,
+		LocalPort:       0,
 		Requests:        make(chan *TunnelRequest, 16),
 		Outbound:        make(chan Message, 256),
 		Done:            make(chan struct{}),
@@ -109,6 +122,7 @@ func (r *Registry) Register(userID string, preferredSubdomain string) (*TunnelEn
 		LastPingAt:      time.Now(),
 		pendingRequests: make(map[string]*TunnelRequest),
 		wsPeers:         make(map[string]*websocket.Conn),
+		tcpPeers:        make(map[string]*websocket.Conn),
 	}
 
 	r.tunnels[id] = entry
@@ -270,6 +284,15 @@ func (e *TunnelEntry) CloseAllBrowserWS() {
 		_ = c.Close()
 		delete(e.wsPeers, streamID)
 	}
+	e.tcpMu.Lock()
+	defer e.tcpMu.Unlock()
+	for streamID, c := range e.tcpPeers {
+		_ = c.WriteControl(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseGoingAway, "tunnel closed"),
+			time.Now().Add(2*time.Second))
+		_ = c.Close()
+		delete(e.tcpPeers, streamID)
+	}
 }
 
 // StoreBrowserWS registers the edge WebSocket for a tunr stream id.
@@ -355,6 +378,50 @@ func (e *TunnelEntry) ResolveResponse(requestID string, resp *TunnelResponse) {
 	case req.Response <- resp:
 	default:
 	}
+}
+
+// ────────────────────────────── TCP Methods ──────────────────────────────
+
+// StoreBrowserTCP registers a browser TCP websocket peer for a stream id.
+func (e *TunnelEntry) StoreBrowserTCP(streamID string, c *websocket.Conn) {
+	e.tcpMu.Lock()
+	defer e.tcpMu.Unlock()
+	e.tcpPeers[streamID] = c
+}
+
+// RemoveBrowserTCP drops the browser TCP websocket mapping.
+func (e *TunnelEntry) RemoveBrowserTCP(streamID string) {
+	e.tcpMu.Lock()
+	defer e.tcpMu.Unlock()
+	delete(e.tcpPeers, streamID)
+}
+
+// WriteTCPDataToBrowser forwards raw TCP data to the browser websocket.
+func (e *TunnelEntry) WriteTCPDataToBrowser(streamID string, payload []byte) error {
+	e.tcpMu.Lock()
+	c := e.tcpPeers[streamID]
+	e.tcpMu.Unlock()
+	if c == nil {
+		return fmt.Errorf("unknown tcp stream %s", streamID)
+	}
+	// Use binary message for raw data
+	c.SetWriteDeadline(time.Now().Add(30 * time.Second))
+	return c.WriteMessage(websocket.BinaryMessage, payload)
+}
+
+// CloseBrowserTCP closes the browser TCP websocket connection.
+func (e *TunnelEntry) CloseBrowserTCP(streamID string, code int, text string) {
+	e.tcpMu.Lock()
+	c := e.tcpPeers[streamID]
+	delete(e.tcpPeers, streamID)
+	e.tcpMu.Unlock()
+	if c == nil {
+		return
+	}
+	_ = c.WriteControl(websocket.CloseMessage,
+		websocket.FormatCloseMessage(code, text),
+		time.Now().Add(3*time.Second))
+	_ = c.Close()
 }
 
 // dummyNetListener — interface doyumu için (kullanılmıyor ama ileride lazım olabilir)

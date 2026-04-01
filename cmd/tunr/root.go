@@ -47,6 +47,7 @@ func init() {
 
 	rootCmd.AddCommand(
 		newShareCmd(),
+		newTCPCmd(),
 		newStartCmd(),
 		newStopCmd(),
 		newStatusCmd(),

@@ -32,6 +32,11 @@ const (
 	MsgTypeWsOpen   MsgType = "ws_open"
 	MsgTypeWsFrame  MsgType = "ws_frame"
 	MsgTypeWsClose  MsgType = "ws_close"
+
+	// TCP tunnel message types
+	MsgTypeTCPOpen  MsgType = "tcp_open"  // relay → CLI: new inbound TCP connection
+	MsgTypeTCPData  MsgType = "tcp_data"  // bidirectional: raw TCP payload (base64)
+	MsgTypeTCPClose MsgType = "tcp_close" // bidirectional: TCP connection shutdown
 )
 
 type wsMessage struct {
@@ -44,6 +49,8 @@ type helloData struct {
 	LocalPort int    `json:"local_port"`
 	Subdomain string `json:"subdomain,omitempty"`
 	Version   string `json:"version"`
+	Protocol  string `json:"protocol,omitempty"` // "http" (default) or "tcp"
+	Region    string `json:"region,omitempty"`   // preferred relay region
 }
 
 type welcomeData struct {
@@ -87,7 +94,7 @@ func (rc *RelayConn) writeJSON(v interface{}) error {
 
 // ConnectRelay dials the relay, performs the hello/welcome handshake,
 // and returns a live connection ready for the request/response loop.
-func ConnectRelay(ctx context.Context, relayURL string, token string, port int, subdomain string, version string) (*RelayConn, *welcomeData, error) {
+func ConnectRelay(ctx context.Context, relayURL string, token string, port int, subdomain string, version string, region string) (*RelayConn, *welcomeData, error) {
 	wsURL, err := buildWSURL(relayURL)
 	if err != nil {
 		return nil, nil, err
@@ -119,6 +126,7 @@ func ConnectRelay(ctx context.Context, relayURL string, token string, port int, 
 		LocalPort: port,
 		Subdomain: subdomain,
 		Version:   version,
+		Region:    region,
 	})
 	if err := rc.writeJSON(wsMessage{
 		Type: MsgTypeHello,
