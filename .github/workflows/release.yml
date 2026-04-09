@@ -44,7 +44,7 @@ jobs:
         continue-on-error: true
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3.8.1
+        uses: sigstore/cosign-installer@v4.1.1
 
       - name: goreleaser ile release
         uses: goreleaser/goreleaser-action@v6
