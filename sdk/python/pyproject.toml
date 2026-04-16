@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tunr"
-version = "0.3.0"
+version = "0.4.0"
 description = "Official Python SDK for tunr — localhost tunneling made simple."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -16,3 +16,7 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/ahmetvural79/tunr"
 Documentation = "https://tunr.sh/docs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tunr"]
+
