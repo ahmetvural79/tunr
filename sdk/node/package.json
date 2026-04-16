@@ -1,6 +1,6 @@
 {
   "name": "@tunr/cli",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Official Node.js SDK for tunr — localhost tunneling made simple.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
