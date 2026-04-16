@@ -107,8 +107,8 @@ func (m *Manager) Start(ctx context.Context, port int, opts StartOptions) (*Tunn
 		logger.Info("⏳ This tunnel will auto-expire in %v", opts.TTL)
 	}
 
-	// TCP tunnel: skip HTTP proxy, relay handles raw TCP forwarding
-	if opts.Protocol == ProtocolTCP {
+	// TCP / UDP / TLS tunnel: skip HTTP proxy, relay handles raw forwarding
+	if opts.Protocol == ProtocolTCP || opts.Protocol == ProtocolUDP || opts.Protocol == ProtocolTLS {
 		go func() {
 			if err := m.runTCPTunnel(tunnelCtx, t, opts); err != nil {
 				if err != context.Canceled {
@@ -447,6 +447,8 @@ type TunnelProtocol string
 const (
 	ProtocolHTTP TunnelProtocol = "http"
 	ProtocolTCP  TunnelProtocol = "tcp"
+	ProtocolUDP  TunnelProtocol = "udp"
+	ProtocolTLS  TunnelProtocol = "tls"
 )
 
 // HeaderRule represents a single live header modification rule.

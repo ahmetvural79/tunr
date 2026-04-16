@@ -9,6 +9,7 @@ import (
 	"github.com/ahmetvural79/tunr/internal/billing"
 	"github.com/ahmetvural79/tunr/internal/inspector"
 	"github.com/ahmetvural79/tunr/internal/logger"
+	"github.com/ahmetvural79/tunr/internal/proxy"
 )
 
 // Server is tunr's internal API server.
@@ -42,6 +43,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/requests/clear", s.handleClearRequests)
 	mux.HandleFunc("/api/v1/stats", s.handleStats)
 	mux.HandleFunc("/api/v1/health", s.handleHealth)
+
+	// Observability endpoints (zgrok-inspired)
+	mux.HandleFunc("/metrics", proxy.PrometheusHandler())
+	mux.HandleFunc("/healthz", proxy.HealthHandler())
+	mux.HandleFunc("/readyz", proxy.ReadyHandler())
 
 	return withMiddleware(mux)
 }

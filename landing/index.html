@@ -55,11 +55,11 @@
         <section class="hero container">
             <div class="hero-badge animate-in">
                 <div class="hero-badge-pulse"></div>
-                tunr v0.3.0 — TCP tunnels, multi-region, Python & Node.js SDKs
+                tunr v0.4.0 — UDP/TLS tunnels, Docker, multi-tunnel config, Prometheus metrics
             </div>
 
             <h1 class="animate-in animate-in-delay-1">Expose your local server <br />in 3 seconds.</h1>
-            <p class="animate-in animate-in-delay-2">HTTPS & TCP tunnels, multi-region routing, SDKs, QR code sharing, and zero configuration.</p>
+            <p class="animate-in animate-in-delay-2">HTTPS, TCP, UDP & TLS tunnels, multi-region routing, SDKs, Docker, and zero configuration.</p>
 
             <div class="hero-actions animate-in animate-in-delay-3">
                 <a href="#install" class="btn btn-primary btn-lg">Install CLI</a>
@@ -80,6 +80,7 @@
                     <button class="terminal-tab active" data-tab="sharing">Sharing</button>
                     <button class="terminal-tab" data-tab="demo">Demo Mode</button>
                     <button class="terminal-tab" data-tab="tcp">TCP Tunnels</button>
+                    <button class="terminal-tab" data-tab="udptls">UDP & TLS</button>
                     <button class="terminal-tab" data-tab="inspect">Inspect</button>
                 </div>
                 <div class="terminal-body">
@@ -120,6 +121,20 @@
                         <span class="cmd-success">  ✓</span> QR code generated<br /><br />
                         <span class="cmd-dim">Connect with:</span><br />
                         <span class="cmd-prompt">~</span> <span class="cmd-text">psql -h ams-db.tunr.sh -p 443 -U myuser mydb</span>
+                    </div>
+                    <div class="terminal-panel" data-panel="udptls">
+                        <span class="cmd-prompt">~</span> <span class="cmd-text">tunr udp --port 53 --region ams</span><br /><br />
+                        <span class="cmd-dim">Connecting to edge relay...</span><br />
+                        <span class="cmd-success">✓</span> UDP tunnel established<br /><br />
+                        <span class="cmd-url">udp://ams-dns.tunr.sh:443</span> → localhost:53<br /><br />
+                        <span class="cmd-dim">Proxy features active:</span><br />
+                        <span class="cmd-success">  ✓</span> Raw UDP datagram forwarding<br />
+                        <span class="cmd-success">  ✓</span> Region: Amsterdam (ams)<br /><br />
+                        <span class="cmd-prompt">~</span> <span class="cmd-text">tunr tls --port 8443</span><br /><br />
+                        <span class="cmd-dim">Connecting to edge relay...</span><br />
+                        <span class="cmd-success">✓</span> TLS tunnel established (end-to-end encrypted)<br /><br />
+                        <span class="cmd-url">tls://e2e.tunr.sh:443</span> → localhost:8443<br />
+                        <span class="cmd-success">  🔒</span> Zero-trust: relay cannot read your traffic
                     </div>
                 </div>
             </div>
@@ -280,6 +295,66 @@
                         <h3>Live Header Modification</h3>
                         <p>Add, replace, or remove HTTP headers on the fly before they reach your local server. Perfect for debugging, internal routing, and stripping fingerprinting headers.</p>
                         <div class="code-snippet">tunr share -p 3000 --header-add "X-Debug: 1"</div>
+                    </div>
+
+                </div>
+
+                <div class="grid-2" style="margin-top: 2rem;">
+
+                    <!-- UDP Tunnels -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #f97316;">🎮</div>
+                        <h3>UDP Tunnels</h3>
+                        <p>Expose DNS servers, game servers, and real-time audio/video services. Raw UDP datagram forwarding with minimal latency.</p>
+                        <div class="code-snippet">tunr udp --port 53 --region ams</div>
+                    </div>
+
+                    <!-- TLS E2E -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #22c55e;">🔐</div>
+                        <h3>TLS End-to-End Encryption</h3>
+                        <p>Zero-knowledge mode — the relay cannot read your traffic. TLS passthrough via SNI routing. Perfect for compliance (HIPAA, PCI-DSS).</p>
+                        <div class="code-snippet">tunr tls --port 8443</div>
+                    </div>
+
+                    <!-- Docker & Self-Hosting -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #06b6d4;">🐳</div>
+                        <h3>Docker & Self-Hosting</h3>
+                        <p>Run tunr from a ~15MB Docker image or self-host the full stack with Docker Compose. Relay + Caddy + Postgres in one command.</p>
+                        <div class="code-snippet">docker compose up -d</div>
+                    </div>
+
+                    <!-- tunr up -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #8b5cf6;">🚀</div>
+                        <h3>Multi-Tunnel Config</h3>
+                        <p>Define all your tunnels in .tunr.json and start them in one command. Mix HTTP, TCP, UDP, and TLS tunnels in a single project.</p>
+                        <div class="code-snippet">tunr up</div>
+                    </div>
+
+                    <!-- Prometheus Metrics -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #ef4444;">📊</div>
+                        <h3>Prometheus Metrics</h3>
+                        <p>Built-in /metrics endpoint for Grafana dashboards. Track requests, bytes, errors, and tunnel uptime. K8s-ready /healthz and /readyz probes.</p>
+                        <div class="code-snippet">curl localhost:19842/metrics</div>
+                    </div>
+
+                    <!-- Service Install -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #14b8a6;">⚡</div>
+                        <h3>Run on Startup</h3>
+                        <p>Install tunr as a system service. Auto-starts on boot with systemd (Linux) or launchd (macOS). Never forget to start your tunnel again.</p>
+                        <div class="code-snippet">tunr service install --port 3000</div>
+                    </div>
+
+                    <!-- Proxy Support -->
+                    <div class="feature-card">
+                        <div class="feature-icon" style="color: #f59e0b;">🌐</div>
+                        <h3>Corporate Proxy Support</h3>
+                        <p>Connect through corporate firewalls. Supports HTTP, HTTPS, and SOCKS5 proxies. Respects HTTP_PROXY and HTTPS_PROXY env vars automatically.</p>
+                        <div class="code-snippet">tunr share -p 3000 --proxy http://proxy:8080</div>
                     </div>
 
                 </div>

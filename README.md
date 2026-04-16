@@ -46,7 +46,7 @@ It's a developer-first alternative to ngrok and Cloudflare Tunnel, built in Go a
 | Automatic HTTPS | ✅ | ✅ | ✅ | ✅ |
 | HTTPS / WebSocket + HMR tunnel | ✅ | ✅ | ✅ | ✅ |
 | TCP tunnel | ✅ | ✅ | ✅ | ✅ |
-| UDP / TLS tunnel | 🔜 | ❌ | ⚠️ | ✅ |
+| UDP / TLS tunnel | ✅ | ❌ | ⚠️ | ✅ |
 | Vibecoder Demo Mode | ✅ | ❌ | ❌ | ❌ |
 | Freeze Mode | ✅ | ❌ | ❌ | ❌ |
 | Feedback Widget Injection | ✅ | ❌ | ❌ | ❌ |
@@ -64,7 +64,11 @@ It's a developer-first alternative to ngrok and Cloudflare Tunnel, built in Go a
 | Open Source CLI | ✅ | ❌ | ✅ | ❌ |
 | Request Inspector / Replay | ✅ | ✅ | ❌ | ✅ |
 | Multi-Region Relay | ✅ | ✅ | ✅ | ✅ |
-| Python / Node.js SDKs | ✅ | ✅ | ❌ | ❌ |
+| Python / Node.js SDKs | ✅ | ✅ | ❌ | ✅ |
+| Docker / Self-Hosting | ✅ | ❌ | ✅ | ❌ |
+| Prometheus Metrics | ✅ | ❌ | ❌ | ❌ |
+| Service Install (systemd) | ✅ | ❌ | ✅ | ❌ |
+| Corporate Proxy Support | ✅ | ✅ | ✅ | ❌ |
 | Single binary | ✅ | ✅ | ⚠️ | ✅ |
 
 ---
@@ -80,6 +84,9 @@ curl -sSL https://tunr.sh/install | sh
 
 # npm (Node.js projects)
 npx tunr@latest share --port 3000
+
+# Docker
+docker run --rm -it --network host ghcr.io/ahmetvural79/tunr:v0.4.0 share --port 3000
 
 # Python SDK
 pip install tunr
@@ -177,6 +184,25 @@ tunr mcp            # Start MCP server (Claude, Cursor, Windsurf)
 tunr tcp --port 5432
 tunr tcp --port 22 --qr
 tunr tcp --port 6379 --allow-ip 10.0.0.0/8 --region ams
+
+# UDP tunnels (v0.4.0)
+tunr udp --port 53                          # DNS server
+tunr udp --port 27015 --region ams           # Game server
+
+# TLS tunnels — end-to-end encryption (v0.4.0)
+tunr tls --port 8443                         # Zero-trust: relay can't read traffic
+
+# Multi-tunnel from config (v0.4.0)
+tunr up                                      # Start all tunnels from .tunr.json
+tunr down                                    # Stop all daemon tunnels
+
+# System service (v0.4.0)
+tunr service install --port 3000             # Auto-start on boot
+tunr service status
+tunr service uninstall
+
+# Corporate proxy (v0.4.0)
+tunr share -p 3000 --proxy http://proxy:8080
 ```
 
 ### Full CLI Reference
@@ -218,6 +244,14 @@ tunr tcp --port 6379 --allow-ip 10.0.0.0/8 --region ams
 | `tunr tcp -p PORT` | Expose local port via TCP tunnel |
 | `tunr tcp -p PORT --qr` | TCP tunnel with QR code |
 | `tunr tcp -p PORT --region REGION` | TCP tunnel in specific region (ams, sea, sin) |
+| `tunr udp -p PORT` | Expose local UDP port (DNS, game servers) |
+| `tunr tls -p PORT` | TLS tunnel with end-to-end encryption |
+| `tunr up` | Start all tunnels from `.tunr.json` |
+| `tunr down` | Stop all running daemon tunnels |
+| `tunr service install --port PORT` | Install as system service (auto-start) |
+| `tunr service uninstall` | Remove system service |
+| `tunr service status` | Check service status |
+| `tunr share -p PORT --proxy URL` | Connect through HTTP/SOCKS5 proxy |
 | `tunr share -p PORT --region REGION` | HTTP tunnel in specific region |
 
 ---
@@ -400,19 +434,32 @@ client = TunrClient()
 tunnel = client.share(port=3000)
 print(tunnel.public_url)
 
+# TCP / UDP / TLS tunnels (v0.4.0)
+db_tunnel = client.tcp(port=5432)
+dns_tunnel = client.udp(port=53)
+tls_tunnel = client.tls(port=8443)
+
 # With options
 opts = TunnelOptions(
     subdomain="myapp",
     password="demo123",
     allow_ips=["10.0.0.0/8"],
+    freeze=True,
+    inject_widget=True,
+    proxy="http://proxy:8080",
+    ttl="2h",
 )
 tunnel = client.share(port=8080, opts=opts)
 
 # Inspect requests
-requests = client.get_requests(tunnel.id)
+requests = client.get_requests(tunnel.subdomain)
 
 # Replay a request
-client.replay_request(requests[0].id)
+client.replay_request(tunnel.subdomain, requests[0]['id'], port=3000)
+
+# Observability (v0.4.0)
+metrics = client.get_metrics()     # Prometheus format
+health = client.health_check()     # {"status": "ok"}
 
 # Clean up
 tunnel.close()
@@ -433,11 +480,20 @@ const client = new TunrClient()
 const tunnel = await client.share(3000)
 console.log(tunnel.publicUrl)
 
+// TCP / UDP / TLS tunnels (v0.4.0)
+const dbTunnel = await client.tcp(5432)
+const dnsTunnel = await client.udp(53)
+const tlsTunnel = await client.tls(8443)
+
 // With options
-const tunnel = await client.share(8080, {
+const appTunnel = await client.share(8080, {
   subdomain: 'myapp',
   password: 'demo123',
   allowIps: ['10.0.0.0/8'],
+  freeze: true,
+  injectWidget: true,
+  proxy: 'http://proxy:8080',
+  ttl: '2h',
 })
 
 // Event-based lifecycle
@@ -446,8 +502,12 @@ tunnel.on('error', (err) => console.error(err))
 tunnel.on('exit', () => console.log('Tunnel closed'))
 
 // Inspect & replay
-const requests = await client.getRequests(tunnel.id)
-await client.replayRequest(requests[0].id)
+const requests = await client.getRequests('myapp')
+await client.replayRequest('myapp', requests[0].id, 3000)
+
+// Observability (v0.4.0)
+const metrics = await client.getMetrics()    // Prometheus text
+const health = await client.healthCheck()    // {status: "ok"}
 
 // Clean up
 await tunnel.close()
@@ -598,13 +658,17 @@ tunr is a single Go binary that:
 Browser → relay.tunr.sh → [WebSocket] → tunr binary → localhost:PORT
 ```
 
-**Protocol support:** Currently tunr tunnels **HTTP/HTTPS + WebSocket** traffic. The relay architecture is designed to support TCP, UDP, and TLS tunnels in the future (`🔜` in the comparison table above).
+**Protocol support:** tunr tunnels **HTTP/HTTPS + WebSocket**, **TCP**, **UDP**, and **TLS** (end-to-end encrypted) traffic. UDP datagrams are forwarded through the WebSocket control channel. TLS tunnels use SNI-based routing for zero-knowledge passthrough.
 
 **Multi-region:** The relay supports region selection via the `--region` flag. Currently available regions: `ams` (Amsterdam, EU), `sea` (Seattle, US West), `sin` (Singapore, Asia). The balancer infrastructure (`relay/internal/relay/balancer.go`) manages cross-region routing metadata.
 
-**Wildcards:** The relay is configured with `*.tunr.sh` wildcard routing through Fly.io / Caddy; wildcard domain support for custom domains is on the roadmap.
+**Wildcards:** The relay is configured with `*.tunr.sh` wildcard routing through Fly.io / Caddy; wildcard domain support for custom domains is available.
 
-The relay server is proprietary and not part of this repository. You can self-host the CLI against your own relay by overriding the relay URL.
+**Self-Hosting:** The relay can be self-hosted using the included `docker-compose.yml` (Relay + Caddy + Postgres). See [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) for the complete guide.
+
+**Docker:** The CLI is available as a ~15MB Alpine Docker image. Build with `docker build -t tunr .` or pull from `ghcr.io/ahmetvural79/tunr`.
+
+**Observability:** The CLI exposes Prometheus metrics at `/metrics` and K8s-ready health probes at `/healthz` and `/readyz` on the inspector port (19842).
 
 ---
 
@@ -689,11 +753,16 @@ LocalTunnel is free but minimal — tunr adds a full feature set on top of the s
 | Feature | Status | Notes |
 |---------|--------|-------|
 | TCP tunnel support | ✅ Released | Database, SSH, game server tunnels |
+| UDP tunnel support | ✅ Released (v0.4.0) | DNS, game servers, real-time apps |
+| TLS tunnel (E2E encryption) | ✅ Released (v0.4.0) | Zero-trust, relay can't read traffic |
 | Python / Node.js SDKs | ✅ Released | Programmatic tunnel creation via `pip install tunr` / `npm i @tunr/cli` |
 | Multi-region relay | ✅ Released | `--region` flag with `ams`, `sea`, `sin` regions |
-| UDP tunnel support | 📋 Backlog | Real-time apps, DNS, game servers |
-| TLS tunnel (E2E encryption) | 📋 Backlog | End-to-end TLS without relay decryption |
-| Wildcard custom domains | 🔜 Planned | `*.yourdomain.com` routing |
+| Docker / Self-Hosting | ✅ Released (v0.4.0) | `docker-compose.yml` for full stack; ~15MB CLI image |
+| Prometheus Metrics | ✅ Released (v0.4.0) | `/metrics`, `/healthz`, `/readyz` |
+| Service Install | ✅ Released (v0.4.0) | `tunr service install` (systemd / launchd) |
+| Multi-Tunnel Config | ✅ Released (v0.4.0) | `tunr up` / `tunr down` from `.tunr.json` |
+| Corporate Proxy | ✅ Released (v0.4.0) | `--proxy` flag + `HTTP_PROXY` / `HTTPS_PROXY` env |
+| Wildcard custom domains | ✅ Released (v0.4.0) | `*.yourdomain.com` routing via self-hosted relay |
 | GUI desktop app | 📋 Backlog | Windows, macOS, Linux |
 | Webhook verification | 📋 Backlog | Signature validation for incoming webhooks |
 | Team collaboration | 📋 Backlog | Shared tunnels, member management |

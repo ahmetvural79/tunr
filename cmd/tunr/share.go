@@ -45,6 +45,7 @@ func newShareCmd() *cobra.Command {
 	var xForwardedFor bool
 	var originalURL bool
 	var corsOrigins []string
+	var proxyAddr string
 
 	cmd := &cobra.Command{
 		Use:   "share",
@@ -88,6 +89,11 @@ Pinggy-Inspired Security & Debugging:
 			}
 
 			token, _ := auth.GetToken()
+
+			// Corporate proxy support
+			if proxyAddr != "" {
+				tunnel.ProxyURL = proxyAddr
+			}
 
 			mgr := tunnel.NewManager(relayURL())
 			mgr.SetAuthToken(token)
@@ -200,6 +206,7 @@ Pinggy-Inspired Security & Debugging:
 	cmd.Flags().BoolVar(&xForwardedFor, "x-forwarded-for", false, "Inject X-Forwarded-For header")
 	cmd.Flags().BoolVar(&originalURL, "original-url", false, "Inject X-Original-URL header")
 	cmd.Flags().StringSliceVar(&corsOrigins, "cors-origin", nil, "CORS allowed origins for preflight")
+	cmd.Flags().StringVar(&proxyAddr, "proxy", "", "HTTP/SOCKS5 proxy URL (e.g., http://proxy:8080)")
 
 	_ = cmd.MarkFlagRequired("port")
 

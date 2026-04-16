@@ -48,6 +48,11 @@ func init() {
 	rootCmd.AddCommand(
 		newShareCmd(),
 		newTCPCmd(),
+		newUDPCmd(),
+		newTLSCmd(),
+		newUpCmd(),
+		newDownCmd(),
+		newServiceCmd(),
 		newStartCmd(),
 		newStopCmd(),
 		newStatusCmd(),

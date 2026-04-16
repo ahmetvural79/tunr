@@ -1,0 +1,64 @@
+# tunr self-hosted stack
+# Usage:
+#   docker compose up -d
+#
+# Requires:
+#   - DNS wildcard: *.tunnel.yourdomain.com → your server IP
+#   - Ports 80, 443 open
+#
+# To use with the CLI:
+#   tunr share -p 3000 --relay https://tunnel.yourdomain.com
+
+version: "3.9"
+
+services:
+  # ─── Caddy (TLS termination + wildcard certs) ────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - relay
+    environment:
+      TUNR_DOMAIN: ${TUNR_DOMAIN:-tunnel.localhost}
+
+  # ─── Relay Server ────────────────────────────────────────────
+  relay:
+    build:
+      context: ./relay
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      TUNR_DOMAIN: ${TUNR_DOMAIN:-tunnel.localhost}
+      TUNR_JWT_SECRET: ${TUNR_JWT_SECRET:-change-me-in-production}
+      DATABASE_URL: postgres://tunr:tunr@postgres:5432/tunr?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─── PostgreSQL ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tunr
+      POSTGRES_PASSWORD: tunr
+      POSTGRES_DB: tunr
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tunr"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pg_data:

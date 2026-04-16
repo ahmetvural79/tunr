@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,9 @@ import (
 	"github.com/ahmetvural79/tunr/internal/proxy"
 	"github.com/gorilla/websocket"
 )
+
+// ProxyURL is set by the CLI --proxy flag. If empty, HTTP_PROXY / HTTPS_PROXY env vars are used.
+var ProxyURL string
 
 // MsgType mirrors the relay server's protocol message types.
 type MsgType string
@@ -107,6 +111,22 @@ func ConnectRelay(ctx context.Context, relayURL string, token string, port int, 
 
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
+	}
+
+	// Corporate proxy support: --proxy flag > HTTPS_PROXY > HTTP_PROXY
+	proxyURL := ProxyURL
+	if proxyURL == "" {
+		proxyURL = os.Getenv("HTTPS_PROXY")
+	}
+	if proxyURL == "" {
+		proxyURL = os.Getenv("HTTP_PROXY")
+	}
+	if proxyURL != "" {
+		pURL, pErr := url.Parse(proxyURL)
+		if pErr == nil {
+			dialer.Proxy = http.ProxyURL(pURL)
+			logger.Debug("Using proxy: %s", proxyURL)
+		}
 	}
 	conn, resp, err := dialer.DialContext(ctx, wsURL, headers)
 	if resp != nil && resp.Body != nil {
