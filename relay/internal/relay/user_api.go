@@ -131,23 +131,25 @@ func (a *UserAPI) handleProfile(w http.ResponseWriter, r *http.Request) {
 	email := r.Context().Value(ctxKeyUserEmail).(string)
 	plan := r.Context().Value(ctxKeyUserPlan).(string)
 
-	// TODO: DB'den kullanım verisi çek
-	// usage, _ := a.db.GetUsage(r.Context(), userID)
+	activeTunnels := 0
+	if a.registry != nil {
+		activeTunnels = len(a.registry.ListByUser(userID))
+	}
 
 	profile := map[string]interface{}{
 		"user_id": userID,
 		"email":   email,
 		"plan":    plan,
 		"limits": map[string]interface{}{
-			"max_tunnels":      DailyRequestLimitByPlan(plan) / 1000,
+			"max_tunnels":      TunnelLimitByPlan(plan),
 			"requests_per_day": DailyRequestLimitByPlan(plan),
 			"custom_subdomain": plan != "free",
 			"http_inspector":   plan != "free",
 		},
 		"usage": map[string]interface{}{
-			"requests_today":  0, // DB'den gelecek
-			"bandwidth_bytes": 0, // DB'den gelecek
-			"active_tunnels":  0, // Registry'den gelecek
+			"requests_today":  0, // request count metering not yet persisted
+			"bandwidth_bytes": 0, // bandwidth metering not yet persisted
+			"active_tunnels":  activeTunnels,
 		},
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
@@ -239,11 +241,17 @@ func (a *UserAPI) handleUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	plan := r.Context().Value(ctxKeyUserPlan).(string)
+	userID := r.Context().Value(ctxKeyUserID).(string)
+
+	activeTunnels := 0
+	if a.registry != nil {
+		activeTunnels = len(a.registry.ListByUser(userID))
+	}
 
 	usage := map[string]interface{}{
 		"period": time.Now().Format("2006-01"),
 		"requests": map[string]interface{}{
-			"used":  0, // DB'den gelecek
+			"used":  0, // request count metering not yet persisted
 			"limit": DailyRequestLimitByPlan(plan),
 		},
 		"bandwidth": map[string]interface{}{
@@ -251,7 +259,7 @@ func (a *UserAPI) handleUsage(w http.ResponseWriter, r *http.Request) {
 			"limit_bytes": bandwidthLimit(plan),
 		},
 		"tunnels": map[string]interface{}{
-			"active": 0,
+			"active": activeTunnels,
 			"limit":  TunnelLimitByPlan(plan),
 		},
 		"reset_at": nextMonthStart(),
@@ -268,10 +276,9 @@ func (a *UserAPI) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := r.Context().Value(ctxKeyUserID).(string)
-
-	// TODO: DB'den token al (sadece masked)
 	_ = userID
 
+	// Token storage is not yet persisted server-side; the dashboard masks the value.
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"token_masked": "prv_••••••••••••••••",
 		"created_at":   time.Now().UTC().Format(time.RFC3339),
@@ -297,7 +304,8 @@ func (a *UserAPI) handleTokenRotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: DB'ye yeni token hash'i kaydet, eskiyi geçersiz kıl
+	// Note: persistent token revocation/storage not yet implemented;
+	// rotation returns a freshly signed JWT and the previous one expires naturally on TTL.
 
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{

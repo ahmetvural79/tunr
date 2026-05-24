@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/ahmetvural79/tunr/internal/inspector"
 	"github.com/ahmetvural79/tunr/internal/logger"
@@ -59,10 +58,12 @@ type RPCError struct {
 
 // Server is the MCP protocol server
 type Server struct {
-	ins        *inspector.Inspector
-	getTunnels func() []TunnelInfo
-	in         io.Reader
-	out        io.Writer
+	ins         *inspector.Inspector
+	getTunnels  func() []TunnelInfo
+	startTunnel TunnelStarter
+	stopTunnel  TunnelStopper
+	in          io.Reader
+	out         io.Writer
 }
 
 // TunnelInfo is a lightweight tunnel summary for MCP tool responses
@@ -73,6 +74,18 @@ type TunnelInfo struct {
 	Status    string `json:"status"`
 }
 
+// ShareOptions captures the optional inputs an MCP client can pass to tunr_share
+type ShareOptions struct {
+	Subdomain string
+}
+
+// TunnelStarter opens a new tunnel on behalf of an MCP client.
+// Returning (info, nil) means the public URL is live.
+type TunnelStarter func(ctx context.Context, port int, opts ShareOptions) (TunnelInfo, error)
+
+// TunnelStopper closes a tunnel by ID.
+type TunnelStopper func(id string) error
+
 // New creates an MCP server wired to the inspector and tunnel manager
 func New(ins *inspector.Inspector, getTunnels func() []TunnelInfo) *Server {
 	return &Server{
@@ -81,6 +94,18 @@ func New(ins *inspector.Inspector, getTunnels func() []TunnelInfo) *Server {
 		in:         os.Stdin,
 		out:        os.Stdout,
 	}
+}
+
+// WithTunnelStarter wires the share tool to a real tunnel manager.
+func (s *Server) WithTunnelStarter(fn TunnelStarter) *Server {
+	s.startTunnel = fn
+	return s
+}
+
+// WithTunnelStopper wires the stop tool to a real tunnel manager.
+func (s *Server) WithTunnelStopper(fn TunnelStopper) *Server {
+	s.stopTunnel = fn
+	return s
 }
 
 // Serve runs the JSON-RPC read loop over stdio
@@ -288,12 +313,20 @@ func (s *Server) toolShare(id interface{}, args json.RawMessage) {
 		return
 	}
 
-	// Wire up to real tunnel.Manager — simulated for now, real integration in Phase 4
-	publicURL := fmt.Sprintf("https://%x.tunr.sh", time.Now().UnixNano()&0xFFFFFF)
+	if s.startTunnel == nil {
+		s.sendToolError(id, "tunnel manager not initialised (run `tunr mcp` from the CLI, not as a library)")
+		return
+	}
+
+	info, err := s.startTunnel(context.Background(), input.Port, ShareOptions{Subdomain: input.Subdomain})
+	if err != nil {
+		s.sendToolError(id, fmt.Sprintf("Failed to open tunnel: %v", err))
+		return
+	}
 
 	s.sendToolResult(id, fmt.Sprintf(
-		"✅ Tunnel is live!\n\n**Public URL:** %s\n**Local Port:** %d\n\nShare this URL freely. Use `tunr_stop` to shut it down.",
-		publicURL, input.Port,
+		"✅ Tunnel is live!\n\n**Public URL:** %s\n**Local Port:** %d\n**Tunnel ID:** `%s`\n\nShare this URL freely. Use `tunr_stop` with the ID above to shut it down.",
+		info.PublicURL, info.LocalPort, info.ID,
 	))
 }
 
@@ -402,8 +435,17 @@ func (s *Server) toolStop(id interface{}, args json.RawMessage) {
 		return
 	}
 
-	// TODO: stop via tunnel manager
-	s.sendToolResult(id, fmt.Sprintf("Tunnel `%s` stopped.", input.TunnelID))
+	if s.stopTunnel == nil {
+		s.sendToolError(id, "tunnel manager not initialised (run `tunr mcp` from the CLI, not as a library)")
+		return
+	}
+
+	if err := s.stopTunnel(input.TunnelID); err != nil {
+		s.sendToolError(id, fmt.Sprintf("Failed to stop tunnel `%s`: %v", input.TunnelID, err))
+		return
+	}
+
+	s.sendToolResult(id, fmt.Sprintf("✅ Tunnel `%s` stopped.", input.TunnelID))
 }
 
 // ─── Response Helpers ─────────────────────────────────────────────────────────

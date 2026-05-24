@@ -12,8 +12,6 @@
 
 **Local → Public in < 3 seconds.**
 
-[![CI](https://github.com/ahmetvural79/tunr/workflows/CI/badge.svg)](https://github.com/ahmetvural79/tunr/actions)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ahmetvural79/tunr)](https://goreportcard.com/report/github.com/ahmetvural79/tunr)
 [![Release](https://img.shields.io/github/v/release/ahmetvural79/tunr?color=7c3aed)](https://github.com/ahmetvural79/tunr/releases)
 [![License: PolyForm Shield](https://img.shields.io/badge/License-PolyForm%20Shield%201.0.0-7c3aed.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00add8)](go.mod)
@@ -750,6 +748,10 @@ LocalTunnel is free but minimal — tunr adds a full feature set on top of the s
 
 [Compare Pinggy vs LocalTunnel](https://pinggy.io/compare/pinggy-vs-localtunnel/)
 
+---
+
+## Roadmap
+
 | Feature | Status | Notes |
 |---------|--------|-------|
 | TCP tunnel support | ✅ Released | Database, SSH, game server tunnels |
@@ -771,6 +773,8 @@ LocalTunnel is free but minimal — tunr adds a full feature set on top of the s
 | Automatic Let's Encrypt certs | 📋 Backlog | Per-tunnel TLS certificate provisioning |
 
 ---
+
+## Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](docs/CONTRIBUTING.md) first.
 
