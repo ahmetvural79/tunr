@@ -180,18 +180,50 @@ func (db *DB) ConsumeMagicToken(ctx context.Context, token string) (string, erro
 // ─── TUNNEL KAYITLARI ────────────────────────────────────────────────────────
 
 // RecordTunnelConnect — tunnel bağlantısını DB'ye kaydet
-func (db *DB) RecordTunnelConnect(ctx context.Context, shortID, userID, subdomain string) error {
+func (db *DB) RecordTunnelConnect(ctx context.Context, shortID, userID, subdomain string, localPort int) error {
+	// Anon users have a synthetic userID like "anon:1.2.3.4" — we can't store that as
+	// a UUID, so skip the DB row entirely (registry still tracks the tunnel in memory).
+	if !looksLikeUUID(userID) {
+		return nil
+	}
 	const q = `
-		INSERT INTO tunnels (tunnel_short_id, user_id, subdomain)
-		VALUES ($1, $2::uuid, $3)
+		INSERT INTO tunnels (tunnel_short_id, user_id, subdomain, local_port, status, connected_at)
+		VALUES ($1, $2::uuid, $3, $4, 'active', now())
 		ON CONFLICT (tunnel_short_id) DO NOTHING`
-	_, err := db.pool.Exec(ctx, q, shortID, userID, subdomain)
+	_, err := db.pool.Exec(ctx, q, shortID, userID, subdomain, localPort)
 	return err
+}
+
+func looksLikeUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') && !(c >= 'A' && c <= 'F') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // RecordTunnelDisconnect — tunnel kapanışını kaydet
 func (db *DB) RecordTunnelDisconnect(ctx context.Context, shortID string) error {
-	const q = `UPDATE tunnels SET disconnected_at = now() WHERE tunnel_short_id = $1`
+	// Mirror disconnected_at into closed_at so the dashboard, which filters on
+	// status='active' and reads closed_at, reflects the new state immediately.
+	const q = `
+		UPDATE tunnels
+		SET disconnected_at = now(),
+		    closed_at       = now(),
+		    status          = 'closed'
+		WHERE tunnel_short_id = $1
+	`
 	_, err := db.pool.Exec(ctx, q, shortID)
 	return err
 }

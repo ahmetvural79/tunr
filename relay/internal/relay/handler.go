@@ -254,11 +254,13 @@ func (h *Handler) ServeTunnel(w http.ResponseWriter, r *http.Request) {
 	logger.Info("Tunnel bağlandı: %s → %s (kullanıcı: %s, proto: %s)",
 		entry.ID, entry.PublicURL(h.domain), userID, protocol)
 
-	if h.db != nil {
-		_ = h.db.RecordTunnelConnect(r.Context(), entry.ID, userID, entry.Subdomain)
-	}
-
 	entry.LocalPort = hello.LocalPort
+
+	if h.db != nil {
+		if err := h.db.RecordTunnelConnect(r.Context(), entry.ID, userID, entry.Subdomain, hello.LocalPort); err != nil {
+			logger.Warn("tunnel kaydı başarısız (id=%s): %v", entry.ID, err)
+		}
+	}
 
 	// Welcome mesajı gönder
 	welcomeData, _ := json.Marshal(WelcomeData{

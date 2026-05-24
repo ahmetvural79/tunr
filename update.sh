@@ -37,7 +37,9 @@ fi
 
 # ── Push source via rsync (skips secrets and build artefacts) ─────────────────
 log "Syncing source tree → $REMOTE:$SRC_DIR"
-rsync -az --delete \
+# Intentionally NOT using --delete to avoid wiping files the server keeps
+# locally (e.g. .env, locally-applied migration journals).
+rsync -az \
   --exclude='.git/' \
   --exclude='node_modules/' \
   --exclude='dist/' \
@@ -49,6 +51,7 @@ rsync -az --delete \
   --exclude='sdk/node/node_modules/' \
   --exclude='sdk/node/dist/' \
   --exclude='sdk/python/dist/' \
+  --exclude='__pycache__/' \
   ./ "$REMOTE:$SRC_DIR/"
 
 # ── Landing ───────────────────────────────────────────────────────────────────
@@ -56,11 +59,42 @@ if [[ "$MODE" != "relay" ]]; then
   log "Refreshing static landing → $LANDING_DIR"
   ssh "$REMOTE" "set -e
     mkdir -p '$LANDING_DIR'
-    # Copy the static landing files but never overwrite the Next.js dashboard at /app
-    rsync -a --delete --exclude='app/' '$SRC_DIR/landing/' '$LANDING_DIR/'
-    # Make sure Caddy can serve them
+    # Static landing only. Never touch app/ (the Next.js dashboard lives there
+    # and rebuilds itself on its own schedule).
+    rsync -a --exclude='app/' '$SRC_DIR/landing/' '$LANDING_DIR/'
     if id caddy >/dev/null 2>&1; then
       chown -R caddy:caddy '$LANDING_DIR'
+    fi
+  "
+
+  log "Rebuilding Next.js dashboard"
+  ssh "$REMOTE" "set -e
+    if [ -d '$SRC_DIR/landing/app' ]; then
+      cd '$SRC_DIR/landing/app'
+      export PATH=\$PATH:/usr/local/bin
+      npm ci --silent
+      npm run build --silent
+      if systemctl list-units --type=service --all | grep -q 'tunr-dashboard\\.service'; then
+        systemctl restart tunr-dashboard
+        sleep 2
+        systemctl --no-pager status tunr-dashboard | head -10
+      fi
+    fi
+  "
+fi
+
+# ── Apply pending DB migrations (idempotent) ──────────────────────────────────
+if [[ "$MODE" != "landing" ]]; then
+  log "Applying relay/migrations/*.sql via docker compose exec postgres"
+  ssh "$REMOTE" "set -e
+    cd /opt/tunr
+    if [ -d '$SRC_DIR/relay/migrations' ] && docker compose ps postgres 2>/dev/null | grep -q Up; then
+      for f in \$(ls '$SRC_DIR/relay/migrations'/*.sql 2>/dev/null | sort); do
+        echo \"  applying \$(basename \$f)\"
+        docker compose exec -T postgres psql -U tunr -d tunr -v ON_ERROR_STOP=1 < \"\$f\" > /dev/null
+      done
+    else
+      echo '  postgres container not running, skipping migrations'
     fi
   "
 fi
