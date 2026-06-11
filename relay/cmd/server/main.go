@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -78,8 +80,8 @@ func main() {
 	mux.HandleFunc("/tunnel/tcp", handler.ServeBrowserTCP)
 
 	// ── Auth endpoints ──
-	mux.HandleFunc("/auth/magic", handleMagicRequest(database, jwtAuth, cfg.Domain))
-	mux.HandleFunc("/auth/verify", handleMagicVerify(database, jwtAuth))
+	mux.HandleFunc("/auth/magic", handleMagicRequest(database, jwtAuth, cfg.Domain, rateLimiter, cfg.DevMode))
+	mux.HandleFunc("/auth/verify", handleMagicVerify(database, jwtAuth, cfg.DevMode))
 
 	// ── API endpoints ──
 	mux.HandleFunc("/api/v1/status", handleStatus(registry))
@@ -155,10 +157,18 @@ func withBaseMiddleware(next http.Handler) http.Handler {
 
 // ─── Auth Handlers ────────────────────────────────────────────────────────────
 
-func handleMagicRequest(database *db.DB, _ *auth.JWTAuth, domain string) http.HandlerFunc {
+func handleMagicRequest(database *db.DB, _ *auth.JWTAuth, domain string, rl *relay.RateLimiter, devMode bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// GÜVENLİK: Auth endpoint'leri IP başına sıkı rate limit ister
+		// (token spam'i, kullanıcı enumeration ve e-posta flood önlenir).
+		if rl != nil && !rl.Allow("authmagic:"+clientIP(r), "anon") {
+			w.Header().Set("Retry-After", "60")
+			http.Error(w, "too many requests", http.StatusTooManyRequests)
 			return
 		}
 
@@ -186,25 +196,28 @@ func handleMagicRequest(database *db.DB, _ *auth.JWTAuth, domain string) http.Ha
 			}
 		}
 
-		// Magic link göster (production'da e-posta gönderilir)
+		// Magic link oluştur (production'da e-posta ile gönderilir)
 		magicLink := auth.MagicLink("https://"+domain, req.Email, token)
 
-		// Production'da: sendEmail(req.Email, magicLink)
-		// Dev'de: log'a bas
-		logger.Info("Magic link: %s", magicLink)
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{
+		resp := map[string]string{
 			"message": "Magic link e-posta adresinize gönderildi",
 			"email":   req.Email,
-			// GÜVENLİK: production'da link'i response'a ekleme!
-			// Sadece dev ortamında döndür:
-			"_dev_link": magicLink,
-		})
+		}
+
+		// GÜVENLİK: Token'ı HTTP yanıtına ASLA production'da koyma — bu
+		// herkesin herhangi bir e-posta için giriş yapmasını sağlar (hesap ele
+		// geçirme). Sadece TUNR_DEV_MODE=1 iken link'i döndür ve logla.
+		if devMode {
+			logger.Info("Magic link (dev): %s", magicLink)
+			resp["_dev_link"] = magicLink
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
 
-func handleMagicVerify(database *db.DB, jwtAuth *auth.JWTAuth) http.HandlerFunc {
+func handleMagicVerify(database *db.DB, jwtAuth *auth.JWTAuth, devMode bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := r.URL.Query().Get("token")
 		if token == "" {
@@ -222,7 +235,13 @@ func handleMagicVerify(database *db.DB, jwtAuth *auth.JWTAuth) http.HandlerFunc 
 				return
 			}
 		} else {
-			// DB yoksa token'ı doğrulayamıyoruz — dev mode
+			// GÜVENLİK: DB yokken token doğrulanamaz. Bu durumda herhangi bir
+			// token'a JWT vermek kimlik doğrulamasını tamamen bypass eder.
+			// Sadece açıkça dev mode'da izin ver.
+			if !devMode {
+				http.Error(w, "auth unavailable: database not configured", http.StatusServiceUnavailable)
+				return
+			}
 			email = "dev@tunr.sh"
 		}
 
@@ -277,16 +296,17 @@ func handleHealth() http.HandlerFunc {
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 type Config struct {
-	Domain               string
-	Port                 string
-	JWTSecret            string
-	DatabaseURL          string
-	PaddleWebhookSecret  string
-	PaddleProPriceID     string
-	PaddleTeamPriceID    string
-	PaddleProProductID   string
-	PaddleTeamProductID  string
+	Domain                string
+	Port                  string
+	JWTSecret             string
+	DatabaseURL           string
+	PaddleWebhookSecret   string
+	PaddleProPriceID      string
+	PaddleTeamPriceID     string
+	PaddleProProductID    string
+	PaddleTeamProductID   string
 	PaddleDefaultPaidPlan string
+	DevMode               bool
 }
 
 func loadConfig() Config {
@@ -301,6 +321,7 @@ func loadConfig() Config {
 		PaddleProProductID:    getEnv("PADDLE_PRO_PRODUCT_ID", ""),
 		PaddleTeamProductID:   getEnv("PADDLE_TEAM_PRODUCT_ID", ""),
 		PaddleDefaultPaidPlan: getEnv("PADDLE_DEFAULT_PAID_PLAN", "pro"),
+		DevMode:               getEnv("TUNR_DEV_MODE", "") == "1" || getEnv("TUNR_DEV_MODE", "") == "true",
 	}
 
 	// GÜVENLİK: JWT secret zorunlu
@@ -324,4 +345,22 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// clientIP — auth rate limiting için en iyi-çaba client IP tespiti.
+// Reverse proxy (Caddy/Cloudflare/Fly) header'larını dener, yoksa RemoteAddr.
+func clientIP(r *http.Request) string {
+	for _, h := range []string{"Fly-Client-IP", "CF-Connecting-IP", "X-Forwarded-For"} {
+		if v := r.Header.Get(h); v != "" {
+			if i := strings.IndexByte(v, ','); i >= 0 {
+				return strings.TrimSpace(v[:i])
+			}
+			return strings.TrimSpace(v)
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

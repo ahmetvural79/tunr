@@ -132,8 +132,10 @@ func (a *UserAPI) handleProfile(w http.ResponseWriter, r *http.Request) {
 	plan := r.Context().Value(ctxKeyUserPlan).(string)
 
 	activeTunnels := 0
+	var requestsToday, bandwidthBytes int64
 	if a.registry != nil {
 		activeTunnels = len(a.registry.ListByUser(userID))
+		requestsToday, bandwidthBytes = a.registry.UserUsage(userID)
 	}
 
 	profile := map[string]interface{}{
@@ -147,8 +149,8 @@ func (a *UserAPI) handleProfile(w http.ResponseWriter, r *http.Request) {
 			"http_inspector":   plan != "free",
 		},
 		"usage": map[string]interface{}{
-			"requests_today":  0, // request count metering not yet persisted
-			"bandwidth_bytes": 0, // bandwidth metering not yet persisted
+			"requests_today":  requestsToday,
+			"bandwidth_bytes": bandwidthBytes,
 			"active_tunnels":  activeTunnels,
 		},
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
@@ -244,18 +246,20 @@ func (a *UserAPI) handleUsage(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(ctxKeyUserID).(string)
 
 	activeTunnels := 0
+	var requestsToday, bandwidthBytes int64
 	if a.registry != nil {
 		activeTunnels = len(a.registry.ListByUser(userID))
+		requestsToday, bandwidthBytes = a.registry.UserUsage(userID)
 	}
 
 	usage := map[string]interface{}{
 		"period": time.Now().Format("2006-01"),
 		"requests": map[string]interface{}{
-			"used":  0, // request count metering not yet persisted
+			"used":  requestsToday,
 			"limit": DailyRequestLimitByPlan(plan),
 		},
 		"bandwidth": map[string]interface{}{
-			"used_bytes":  0,
+			"used_bytes":  bandwidthBytes,
 			"limit_bytes": bandwidthLimit(plan),
 		},
 		"tunnels": map[string]interface{}{

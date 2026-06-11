@@ -66,6 +66,17 @@ type Registry struct {
 	mu          sync.RWMutex
 	tunnels     map[string]*TunnelEntry // key: tunnelID
 	bySubdomain map[string]*TunnelEntry // key: subdomain (quick lookup)
+
+	metricsMu sync.Mutex
+	metrics   map[string]*userMetric // key: userID → bugünkü kullanım sayaçları
+}
+
+// userMetric — bir kullanıcının günlük istek/bant genişliği sayacı.
+// In-memory; gün değişince sıfırlanır. Dashboard "usage" değerlerini besler.
+type userMetric struct {
+	day      string
+	requests int64
+	bytes    int64
 }
 
 // NewRegistry — boş kayıt defteri oluştur
@@ -73,11 +84,43 @@ func NewRegistry() *Registry {
 	r := &Registry{
 		tunnels:     make(map[string]*TunnelEntry),
 		bySubdomain: make(map[string]*TunnelEntry),
+		metrics:     make(map[string]*userMetric),
 	}
 
 	// Ölü tunnel'ları temizlemek için background goroutine
 	go r.cleanupLoop()
 	return r
+}
+
+// RecordRequest — bir kullanıcı için proxy'lenen isteği ve aktarılan baytı say.
+func (r *Registry) RecordRequest(userID string, bytes int64) {
+	if userID == "" {
+		return
+	}
+	today := time.Now().UTC().Format("2006-01-02")
+	r.metricsMu.Lock()
+	defer r.metricsMu.Unlock()
+	m := r.metrics[userID]
+	if m == nil || m.day != today {
+		m = &userMetric{day: today}
+		r.metrics[userID] = m
+	}
+	m.requests++
+	if bytes > 0 {
+		m.bytes += bytes
+	}
+}
+
+// UserUsage — kullanıcının bugünkü istek sayısı ve aktarılan bayt miktarı.
+func (r *Registry) UserUsage(userID string) (requests int64, bytes int64) {
+	today := time.Now().UTC().Format("2006-01-02")
+	r.metricsMu.Lock()
+	defer r.metricsMu.Unlock()
+	m := r.metrics[userID]
+	if m == nil || m.day != today {
+		return 0, 0
+	}
+	return m.requests, m.bytes
 }
 
 // Register — yeni tunnel kayıt et ve bir ID/subdomain ver
