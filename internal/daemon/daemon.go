@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -236,11 +237,10 @@ func writePIDState(state *DaemonState) error {
 	return os.WriteFile(path, data, 0600)
 }
 
-// runCommand executes an external command (Windows only).
+// runCommand executes an external command and returns its combined output.
+// Used by processExistsWindows to probe PIDs via `tasklist`.
 // SECURITY: Only pass hardcoded arguments — never user input (command injection risk).
 func runCommand(name string, args ...string) (string, error) {
-	out, err := os.ReadFile("/dev/null") // placeholder
-	_ = out
-	_ = err
-	return "", nil
+	out, err := exec.Command(name, args...).Output()
+	return string(out), err
 }

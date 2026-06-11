@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/ahmetvural79/tunr/internal/billing"
@@ -55,8 +56,14 @@ func (s *Server) Handler() http.Handler {
 // withMiddleware wraps the handler with standard HTTP middleware
 func withMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// SECURITY: lock down CORS to real domain in production (this is dev-mode permissive)
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:*")
+		// SECURITY: the internal API binds to localhost only. "http://localhost:*"
+		// is not a valid CORS value (wildcards aren't allowed in the port), so
+		// browsers ignored it. Reflect the origin only when it is a loopback
+		// address (any port), which is the only legitimate caller here.
+		if origin := r.Header.Get("Origin"); isLoopbackOrigin(origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -70,6 +77,22 @@ func withMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isLoopbackOrigin reports whether an Origin header points at the local machine.
+func isLoopbackOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }
 
 // SECURITY: every Paddle webhook is verified via HMAC-SHA256 signature

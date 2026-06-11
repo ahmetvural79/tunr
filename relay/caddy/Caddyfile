@@ -38,11 +38,10 @@ tunr.sh, www.tunr.sh {
 
     # Tunnel bağlantısı
     handle /tunnel/* {
-        reverse_proxy localhost:8080 {
-            # WebSocket için upgrade header
-            header_up Upgrade {>Upgrade}
-            header_up Connection {>Connection}
-        }
+        # GÜVENLİK/DOĞRULUK: Caddy v2 WebSocket upgrade'lerini otomatik proxy'ler.
+        # `header_up Upgrade/Connection` EKLEME — handshake'i bozar
+        # ("'upgrade' token not found in 'Connection' header").
+        reverse_proxy localhost:8080
     }
 
     # Auth endpoints
@@ -80,9 +79,8 @@ tunr.sh, www.tunr.sh {
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto https
 
-        # WebSocket desteği
-        header_up Upgrade {>Upgrade}
-        header_up Connection {>Connection}
+        # WebSocket: Caddy v2 upgrade'i otomatik halleder; manuel
+        # header_up Upgrade/Connection EKLENMEZ (handshake'i bozar).
 
         # Tunnel response'lar yavaş olabilir — timeout'ı uzat
         transport http {

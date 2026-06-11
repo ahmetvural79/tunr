@@ -3,6 +3,7 @@ package relay
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -19,6 +20,10 @@ import (
 //
 // Production'da Redis kullanın (multi-instance için)
 // Bu implementasyon tek sunucu için in-memory çalışır.
+// maxBuckets caps the in-memory bucket map so a flood of unique keys
+// (e.g. spoofed anonymous IPs) can't exhaust memory between cleanup ticks.
+const maxBuckets = 100_000
+
 type RateLimiter struct {
 	mu      sync.Mutex
 	buckets map[string]*bucket
@@ -65,6 +70,11 @@ func (rl *RateLimiter) Allow(key, plan string) bool {
 	now := time.Now()
 
 	if !exists || now.After(b.refillAt) {
+		// GÜVENLİK: Map sınırına ulaşıldıysa süresi dolmuş bucket'ları
+		// fırsatçı şekilde temizle (cleanup tick'ini beklemeden).
+		if !exists && len(rl.buckets) >= maxBuckets {
+			rl.evictExpiredLocked(now)
+		}
 		// Yeni bucket veya pencere doldu — sıfırla
 		rl.buckets[key] = &bucket{
 			tokens:    limit - 1,
@@ -86,13 +96,17 @@ func (rl *RateLimiter) Allow(key, plan string) bool {
 func (rl *RateLimiter) cleanupLoop() {
 	for range rl.cleanup.C {
 		rl.mu.Lock()
-		now := time.Now()
-		for key, b := range rl.buckets {
-			if now.After(b.refillAt.Add(time.Minute)) {
-				delete(rl.buckets, key)
-			}
-		}
+		rl.evictExpiredLocked(time.Now())
 		rl.mu.Unlock()
+	}
+}
+
+// evictExpiredLocked — süresi dolmuş bucket'ları sil. Çağıran mu'yu tutmalı.
+func (rl *RateLimiter) evictExpiredLocked(now time.Time) {
+	for key, b := range rl.buckets {
+		if now.After(b.refillAt.Add(time.Minute)) {
+			delete(rl.buckets, key)
+		}
 	}
 }
 
@@ -116,8 +130,11 @@ func RateLimitMiddleware(rl *RateLimiter, plan string) func(http.Handler) http.H
 				return
 			}
 
-			w.Header().Set("X-RateLimit-Limit", "200")
-			w.Header().Set("X-RateLimit-Remaining", "unknown") // Gerçek değer için Redis
+			limit := planLimits[plan]
+			if limit == 0 {
+				limit = planLimits["anon"]
+			}
+			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(limit))
 			next.ServeHTTP(w, r)
 		})
 	}

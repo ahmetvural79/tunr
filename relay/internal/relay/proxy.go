@@ -112,6 +112,9 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Kullanım metriklerini güncelle (dashboard "usage" değerleri için).
+	p.registry.RecordRequest(entry.UserID, int64(len(body)+len(resp.Body)))
+
 	// Cevabı dışarıya yaz
 	for key, vals := range resp.Headers {
 		for _, v := range vals {

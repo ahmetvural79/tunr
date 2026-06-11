@@ -58,10 +58,10 @@ type Message struct {
 
 // HelloData — CLI'ın ilk mesajı
 type HelloData struct {
-	Token     string `json:"token"`      // auth JWT
-	LocalPort int    `json:"local_port"` // bilgi amaçlı
-	Subdomain string `json:"subdomain"`  // tercih edilen subdomain (opsiyonel)
-	Version   string `json:"version"`    // tunr CLI versiyonu
+	Token     string `json:"token"`              // auth JWT
+	LocalPort int    `json:"local_port"`         // bilgi amaçlı
+	Subdomain string `json:"subdomain"`          // tercih edilen subdomain (opsiyonel)
+	Version   string `json:"version"`            // tunr CLI versiyonu
 	Protocol  string `json:"protocol,omitempty"` // "http" (default) or "tcp"
 	Region    string `json:"region,omitempty"`   // preferred relay region
 }
@@ -75,10 +75,10 @@ type WelcomeData struct {
 
 // RequestData — relay'in CLI'ya ilettiği HTTP isteği
 type RequestData struct {
-	RequestID string            `json:"request_id"`
-	Method    string            `json:"method"`
-	Path      string            `json:"path"`
-	Headers   map[string]string `json:"headers"`
+	RequestID string              `json:"request_id"`
+	Method    string              `json:"method"`
+	Path      string              `json:"path"`
+	Headers   map[string]string   `json:"headers"`
 	HeadersV2 map[string][]string `json:"headers_v2,omitempty"`
 	Body      string              `json:"body,omitempty"`
 	BodyB64   string              `json:"body_b64,omitempty"`
@@ -86,9 +86,9 @@ type RequestData struct {
 
 // ResponseData — CLI'ın relay'e gönderdiği HTTP yanıtı
 type ResponseData struct {
-	RequestID  string            `json:"request_id"`
-	StatusCode int               `json:"status_code"`
-	Headers    map[string]string `json:"headers"`
+	RequestID  string              `json:"request_id"`
+	StatusCode int                 `json:"status_code"`
+	Headers    map[string]string   `json:"headers"`
 	HeadersV2  map[string][]string `json:"headers_v2,omitempty"`
 	Body       string              `json:"body,omitempty"`
 	BodyB64    string              `json:"body_b64,omitempty"`
@@ -137,16 +137,10 @@ type TCPOpenData struct {
 var wsUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024 * 64,
 	WriteBufferSize: 1024 * 64,
-	CheckOrigin: func(r *http.Request) bool {
-		// GÜVENLİK: Origin kontrolü — sadece tunr CLI ve tunr.sh kabul et
-		// Empty origin = CLI tool (non-browser) → kabul et
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true // CLI WebSocket client
-		}
-		// Browser bağlantısı gerekiyorsa tunr.sh domain'i kontrol et
-		return strings.HasSuffix(origin, "tunr.sh")
-	},
+	// GÜVENLİK: Origin kontrolü — boş origin (CLI aracı) veya tunr.sh / *.tunr.sh.
+	// browserTunnelCheckOrigin host'u parse eder; "eviltunr.sh" gibi suffix
+	// bypass'larını engeller (eski strings.HasSuffix(origin, "tunr.sh") kontrolü hatalıydı).
+	CheckOrigin: browserTunnelCheckOrigin,
 }
 
 // Handler — WebSocket bağlantılarını relay eden ana handler
