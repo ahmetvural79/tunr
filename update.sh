@@ -1,29 +1,54 @@
 #!/usr/bin/env bash
-# update.sh — push current branch to the tunr Hetzner box and rebuild relay + landing.
+# update.sh — sync this repo to the tunr production box and rebuild the
+# docker-compose stack (relay + dashboard) and refresh the static landing.
+#
+# The server (167.233.102.96) runs everything as docker compose project "tunr"
+# under /opt/tunr:
+#   docker-compose.yml            postgres + relay   (relay built from src/relay)
+#   docker-compose.dashboard.yml  dashboard          (Next.js, built from src/landing/app)
+#   docker-compose.caddy.yml      caddy              (TLS + reverse proxy, ports 80/443)
+# Static marketing HTML is served by caddy from the /var/www/tunr/landing bind mount.
+# (CLI binary distribution is NOT served from this box — there is no Go toolchain
+# on the host and Caddy exposes no /downloads route, so that step was removed.)
 #
 # Usage:
-#   ./update.sh                # full update: relay binary + CLI downloads + static landing
-#   ./update.sh --landing-only # static landing only (no relay restart)
-#   ./update.sh --relay-only   # relay binary + restart (no static landing)
+#   ./update.sh                  # full: sync + landing + migrations + relay + dashboard
+#   ./update.sh --landing-only   # static landing only (no container restarts)
+#   ./update.sh --relay-only     # migrations + relay rebuild/restart
+#   ./update.sh --dashboard-only # dashboard rebuild/restart (e.g. after editing its .env.local)
 #
 # Requirements:
-#   - SSH access to the host alias `tunr-hetzner` (set in ~/.ssh/config).
-#   - On the server: /opt/tunr/src as the git checkout, /var/www/tunr for landing,
-#     systemd unit `tunr-relay`, Go toolchain on PATH.
+#   - SSH host alias `tunr-prod` in ~/.ssh/config → 167.233.102.96
+#     (User root, IdentityFile ~/.ssh/id_ed25519). Override with
+#     TUNR_REMOTE=root@167.233.102.96 to bypass the alias.
+#   - On the server: /opt/tunr (compose project root), /opt/tunr/src the rsync
+#     checkout, Docker Engine + Compose v2. The server keeps its own secrets in
+#     /opt/tunr/.env and /opt/tunr/src/landing/app/.env.local — this script never
+#     syncs or overwrites those (.env / .env.* are excluded from rsync), so
+#     server-side config such as ADMIN_EMAILS survives every deploy.
 
 set -euo pipefail
 
-REMOTE="${TUNR_REMOTE:-tunr-hetzner}"
+REMOTE="${TUNR_REMOTE:-tunr-prod}"
+COMPOSE_DIR="${TUNR_COMPOSE_DIR:-/opt/tunr}"
 SRC_DIR="${TUNR_SRC_DIR:-/opt/tunr/src}"
-LANDING_DIR="${TUNR_LANDING_DIR:-/var/www/tunr}"
-DOWNLOADS_DIR="${TUNR_DOWNLOADS_DIR:-/var/www/tunr/downloads}"
-RELAY_SERVICE="${TUNR_RELAY_SERVICE:-tunr-relay}"
-RELAY_BIN="${TUNR_RELAY_BIN:-/usr/local/bin/tunr-relay}"
-HEALTH_URL="${TUNR_HEALTH_URL:-http://localhost:8080/api/v1/health}"
+LANDING_DIR="${TUNR_LANDING_DIR:-/var/www/tunr/landing}"
+HEALTH_URL="${TUNR_HEALTH_URL:-http://127.0.0.1:8080/api/v1/health}"
+
+# compose -f flag sets. The base file holds postgres+relay; the dashboard add-on
+# shares the same project name ("tunr") so services compose together. Caddy
+# (docker-compose.caddy.yml) is left running untouched by this script.
+DC_BASE="-f docker-compose.yml"
+DC_DASH="-f docker-compose.yml -f docker-compose.dashboard.yml"
 
 MODE="full"
-if [[ "${1:-}" == "--landing-only" ]]; then MODE="landing"; fi
-if [[ "${1:-}" == "--relay-only"   ]]; then MODE="relay";   fi
+case "${1:-}" in
+  --landing-only)   MODE="landing"   ;;
+  --relay-only)     MODE="relay"     ;;
+  --dashboard-only) MODE="dashboard" ;;
+  "")               MODE="full"      ;;
+  *) printf 'unknown flag: %s\n' "$1" >&2; exit 2 ;;
+esac
 
 log() { printf '\033[1;35m[update]\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[update]\033[0m %s\n' "$*" >&2; exit 1; }
@@ -32,19 +57,21 @@ log "Target host: $REMOTE  (mode: $MODE)"
 
 # ── Pre-flight: verify SSH ────────────────────────────────────────────────────
 if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$REMOTE" true 2>/dev/null; then
-  die "SSH to $REMOTE failed. Check ~/.ssh/config and that your key is in the server's authorized_keys."
+  die "SSH to $REMOTE failed. Check ~/.ssh/config (Host tunr-prod → 167.233.102.96, User root) and that your key is in the server's authorized_keys."
 fi
 
 # ── Push source via rsync (skips secrets and build artefacts) ─────────────────
+# Intentionally NOT using --delete: the server keeps files locally that aren't in
+# the repo (e.g. .env, .env.local, locally-applied migration journals).
 log "Syncing source tree → $REMOTE:$SRC_DIR"
-# Intentionally NOT using --delete to avoid wiping files the server keeps
-# locally (e.g. .env, locally-applied migration journals).
 rsync -az \
   --exclude='.git/' \
   --exclude='node_modules/' \
   --exclude='dist/' \
+  --exclude='.next/' \
   --exclude='.env' \
   --exclude='.env.*' \
+  --exclude='.DS_Store' \
   --exclude='coverage.txt' \
   --exclude='tunr' \
   --exclude='tunr.log' \
@@ -54,44 +81,26 @@ rsync -az \
   --exclude='__pycache__/' \
   ./ "$REMOTE:$SRC_DIR/"
 
-# ── Landing ───────────────────────────────────────────────────────────────────
-if [[ "$MODE" != "relay" ]]; then
+# ── Static landing ────────────────────────────────────────────────────────────
+# Caddy serves these files live from the bind mount, so no restart is needed.
+# Never copy app/ — that's the Next.js dashboard, which runs as its own container.
+if [[ "$MODE" == "full" || "$MODE" == "landing" ]]; then
   log "Refreshing static landing → $LANDING_DIR"
   ssh "$REMOTE" "set -e
     mkdir -p '$LANDING_DIR'
-    # Static landing only. Never touch app/ (the Next.js dashboard lives there
-    # and rebuilds itself on its own schedule).
     rsync -a --exclude='app/' '$SRC_DIR/landing/' '$LANDING_DIR/'
-    if id caddy >/dev/null 2>&1; then
-      chown -R caddy:caddy '$LANDING_DIR'
-    fi
-  "
-
-  log "Rebuilding Next.js dashboard"
-  ssh "$REMOTE" "set -e
-    if [ -d '$SRC_DIR/landing/app' ]; then
-      cd '$SRC_DIR/landing/app'
-      export PATH=\$PATH:/usr/local/bin
-      npm ci --silent
-      npm run build --silent
-      if systemctl list-units --type=service --all | grep -q 'tunr-dashboard\\.service'; then
-        systemctl restart tunr-dashboard
-        sleep 2
-        systemctl --no-pager status tunr-dashboard | head -10
-      fi
-    fi
   "
 fi
 
 # ── Apply pending DB migrations (idempotent) ──────────────────────────────────
-if [[ "$MODE" != "landing" ]]; then
+if [[ "$MODE" == "full" || "$MODE" == "relay" ]]; then
   log "Applying relay/migrations/*.sql via docker compose exec postgres"
   ssh "$REMOTE" "set -e
-    cd /opt/tunr
-    if [ -d '$SRC_DIR/relay/migrations' ] && docker compose ps postgres 2>/dev/null | grep -q Up; then
+    cd '$COMPOSE_DIR'
+    if [ -n \"\$(docker compose $DC_BASE ps -q postgres 2>/dev/null)\" ]; then
       for f in \$(ls '$SRC_DIR/relay/migrations'/*.sql 2>/dev/null | sort); do
         echo \"  applying \$(basename \$f)\"
-        docker compose exec -T postgres psql -U tunr -d tunr -v ON_ERROR_STOP=1 < \"\$f\" > /dev/null
+        docker compose $DC_BASE exec -T postgres psql -U tunr -d tunr -v ON_ERROR_STOP=1 < \"\$f\" > /dev/null
       done
     else
       echo '  postgres container not running, skipping migrations'
@@ -99,49 +108,39 @@ if [[ "$MODE" != "landing" ]]; then
   "
 fi
 
-# ── Relay binary + CLI downloads ──────────────────────────────────────────────
-if [[ "$MODE" != "landing" ]]; then
-  log "Rebuilding relay binary on $REMOTE"
+# ── Relay container (rebuild image from src/relay, recreate) ──────────────────
+if [[ "$MODE" == "full" || "$MODE" == "relay" ]]; then
+  log "Rebuilding + restarting relay container"
   ssh "$REMOTE" "set -e
-    cd '$SRC_DIR/relay'
-    export PATH=\$PATH:/usr/local/go/bin
-    VERSION=\$(cd '$SRC_DIR' && git describe --tags --always 2>/dev/null || echo dev)
-    CGO_ENABLED=0 go build -trimpath -ldflags=\"-w -s -X main.Version=\$VERSION\" \
-      -o '${RELAY_BIN}.new' ./cmd/server
-    mv '${RELAY_BIN}.new' '$RELAY_BIN'
-    chmod 755 '$RELAY_BIN'
-    echo 'relay version:' \$('$RELAY_BIN' --help 2>&1 | head -1 || true)
+    cd '$COMPOSE_DIR'
+    docker compose $DC_BASE build relay
+    docker compose $DC_BASE up -d relay
   "
+fi
 
-  log "Cross-compiling CLI downloads → $DOWNLOADS_DIR"
+# ── Dashboard container (rebuild from src/landing/app; picks up .env.local) ───
+if [[ "$MODE" == "full" || "$MODE" == "dashboard" ]]; then
+  log "Rebuilding + restarting dashboard container"
   ssh "$REMOTE" "set -e
-    mkdir -p '$DOWNLOADS_DIR'
-    cd '$SRC_DIR'
-    export PATH=\$PATH:/usr/local/go/bin
-    VERSION=\$(git describe --tags --always 2>/dev/null || echo dev)
-    LDFLAGS=\"-w -s -X main.Version=\$VERSION\"
-    CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags=\"\$LDFLAGS\" -o '$DOWNLOADS_DIR/tunr-linux-amd64'      ./cmd/tunr
-    CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -ldflags=\"\$LDFLAGS\" -o '$DOWNLOADS_DIR/tunr-linux-arm64'      ./cmd/tunr
-    CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags=\"\$LDFLAGS\" -o '$DOWNLOADS_DIR/tunr-darwin-amd64'     ./cmd/tunr
-    CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags=\"\$LDFLAGS\" -o '$DOWNLOADS_DIR/tunr-darwin-arm64'     ./cmd/tunr
-    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags=\"\$LDFLAGS\" -o '$DOWNLOADS_DIR/tunr-windows-amd64.exe' ./cmd/tunr
-    ls -lh '$DOWNLOADS_DIR'
-  "
-
-  log "Restarting $RELAY_SERVICE"
-  ssh "$REMOTE" "systemctl daemon-reload || true
-    systemctl restart '$RELAY_SERVICE'
-    sleep 2
-    systemctl --no-pager status '$RELAY_SERVICE' | head -15
+    cd '$COMPOSE_DIR'
+    docker compose $DC_DASH build dashboard
+    docker compose $DC_DASH up -d --no-deps dashboard
   "
 fi
 
 # ── Verify ────────────────────────────────────────────────────────────────────
-log "Probing $HEALTH_URL"
-if ssh "$REMOTE" "curl -fsS --max-time 5 '$HEALTH_URL' >/dev/null"; then
-  log "Health check OK"
-else
-  die "Health check failed. Inspect: ssh $REMOTE journalctl -u $RELAY_SERVICE -n 80"
+if [[ "$MODE" != "landing" ]]; then
+  log "Probing relay health ($HEALTH_URL)"
+  if ssh "$REMOTE" "curl -fsS --max-time 5 '$HEALTH_URL' >/dev/null"; then
+    log "Relay health OK"
+  else
+    die "Relay health failed. Inspect: ssh $REMOTE 'cd $COMPOSE_DIR && docker compose $DC_BASE logs --tail 80 relay'"
+  fi
+fi
+
+if [[ "$MODE" == "full" || "$MODE" == "dashboard" ]]; then
+  log "Dashboard container status:"
+  ssh "$REMOTE" "docker ps --filter name=tunr-dashboard-1 --format '  {{.Names}}: {{.Status}}'"
 fi
 
 log "Done."

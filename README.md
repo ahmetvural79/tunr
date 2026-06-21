@@ -36,40 +36,7 @@ $ tunr share --port 3000
 
 It's a developer-first alternative to ngrok and Cloudflare Tunnel, built in Go as a single static binary that runs on macOS, Linux, and Windows (ARM64 included).
 
-### What makes tunr different
 
-| Feature | tunr | ngrok | Cloudflare Tunnel | Pinggy |
-|---------|------|-------|-------------------|--------|
-| Zero config | ✅ | ⚠️ | ⚠️ | ✅ |
-| Automatic HTTPS | ✅ | ✅ | ✅ | ✅ |
-| HTTPS / WebSocket + HMR tunnel | ✅ | ✅ | ✅ | ✅ |
-| TCP tunnel | ✅ | ✅ | ✅ | ✅ |
-| UDP / TLS tunnel | ✅ | ❌ | ⚠️ | ✅ |
-| Vibecoder Demo Mode | ✅ | ❌ | ❌ | ❌ |
-| Freeze Mode | ✅ | ❌ | ❌ | ❌ |
-| Feedback Widget Injection | ✅ | ❌ | ❌ | ❌ |
-| Path Routing | ✅ | ❌ | ⚠️ | ❌ |
-| Auto-Login Bypass | ✅ | ❌ | ❌ | ❌ |
-| Auto-Expiring Tunnels (TTL) | ✅ | ❌ | ❌ | ❌ |
-| MCP Integration | ✅ | ❌ | ❌ | ❌ |
-| QR code tunnel sharing | ✅ | ❌ | ❌ | ✅ |
-| Bearer Token / Key Auth | ✅ | ⚠️ | ❌ | ✅ |
-| IP Whitelisting | ✅ | ❌ | ❌ | ✅ |
-| Header Modification | ✅ | ❌ | ❌ | ✅ |
-| Password / Basic Auth | ✅ | ✅ | ✅ (Zero Trust) | ✅ |
-| Custom Subdomains | ✅ | ✅ | ❌ | ✅ |
-| Custom / Wildcard Domains | ✅ | ⚠️ | ✅ | ✅ |
-| Open Source CLI | ✅ | ❌ | ✅ | ❌ |
-| Request Inspector / Replay | ✅ | ✅ | ❌ | ✅ |
-| Multi-Region Relay | ✅ | ✅ | ✅ | ✅ |
-| Python / Node.js SDKs | ✅ | ✅ | ❌ | ✅ |
-| Docker / Self-Hosting | ✅ | ❌ | ✅ | ❌ |
-| Prometheus Metrics | ✅ | ❌ | ❌ | ❌ |
-| Service Install (systemd) | ✅ | ❌ | ✅ | ❌ |
-| Corporate Proxy Support | ✅ | ✅ | ✅ | ❌ |
-| Single binary | ✅ | ✅ | ⚠️ | ✅ |
-
----
 
 ## Install
 
