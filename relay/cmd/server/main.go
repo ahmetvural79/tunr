@@ -16,6 +16,7 @@ import (
 	"github.com/ahmetvural79/tunr/relay/internal/db"
 	"github.com/ahmetvural79/tunr/relay/internal/logger"
 	"github.com/ahmetvural79/tunr/relay/internal/relay"
+	"github.com/ahmetvural79/tunr/relay/internal/runner"
 )
 
 // tunr relay sunucusu.
@@ -68,6 +69,14 @@ func main() {
 	rateLimiter := relay.NewRateLimiter()
 	userAPI := relay.NewUserAPI(jwtAuth, database, rateLimiter, registry, cfg.Domain)
 
+	// ── Pivot Faz 0: cloud upstream routing ──
+	// subdomain -> kalıcı app container (wake-on-request). routes tablosundan
+	// beslenir (LISTEN/NOTIFY). DB yoksa no-op; tünel yolu etkilenmez.
+	routeStore := relay.NewRouteStore()
+	proxy.SetRoutes(routeStore)
+	appDriver := runner.NewDockerDriver() // own-server Docker+gVisor; Waker'ı karşılar
+	relay.NewRouteLoader(database, routeStore, appDriver, nil).Start(ctx)
+
 	// HTTP sunucusu
 	mux := http.NewServeMux()
 
@@ -87,6 +96,10 @@ func main() {
 	mux.HandleFunc("/api/v1/status", handleStatus(registry))
 	mux.HandleFunc("/api/v1/health", handleHealth())
 	userAPI.RegisterRoutes(mux)
+
+	// ── Pivot Faz 0: control plane (/v1/apps) ──
+	// App yaratma + cloud route seed'leme (deploy pipeline sonraki aşama).
+	relay.NewControlPlane(jwtAuth, database, cfg.Domain).RegisterRoutes(mux)
 	if cfg.PaddleWebhookSecret != "" {
 		paddleWebhook := relay.NewPaddleWebhookHandler(database, cfg.PaddleWebhookSecret, relay.PaddlePlanConfig{
 			ProPriceID:      cfg.PaddleProPriceID,

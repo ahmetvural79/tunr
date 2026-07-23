@@ -29,11 +29,18 @@ import (
 type Proxy struct {
 	registry *Registry
 	domain   string
+	routes   *RouteStore // pivot: subdomain -> kalıcı cloud app (nil ise yalnız tünel)
 }
 
 // NewProxy — oluştur
 func NewProxy(registry *Registry, domain string) *Proxy {
 	return &Proxy{registry: registry, domain: domain}
+}
+
+// SetRoutes — cloud upstream route store'unu bağla (pivot Faz 0).
+// nil bırakılırsa relay yalnız tünel modunda çalışır (mevcut davranış).
+func (p *Proxy) SetRoutes(routes *RouteStore) {
+	p.routes = routes
 }
 
 // ServeHTTP — gelen isteği ilgili tunnel'a proxy'le
@@ -50,6 +57,14 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Tunnel'ı bul
 	entry, ok := p.registry.Lookup(subdomain)
 	if !ok {
+		// Canlı tünel yok — kalıcı bir cloud app'e (wake-on-request) düş.
+		// Pivot Faz 0: subdomain 'routes' tablosunda kind='cloud' ise buradan servis edilir.
+		if p.routes != nil {
+			if up, found := p.routes.LookupCloud(subdomain); found {
+				up.ServeHTTP(w, r)
+				return
+			}
+		}
 		writeTunnelNotFound(w, subdomain)
 		return
 	}
