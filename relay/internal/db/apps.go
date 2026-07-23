@@ -70,6 +70,51 @@ func (db *DB) GetAppByName(ctx context.Context, name string) (*App, bool, error)
 	return &a, true, nil
 }
 
+// GetOrCreateAppByName returns the app for name (must be owned by userID),
+// creating it with the given id/edge_secret if it doesn't exist yet.
+func (db *DB) GetOrCreateAppByName(ctx context.Context, userID, name, id, edgeSecret string, internalPort int) (*App, bool, error) {
+	existing, ok, err := db.GetAppByName(ctx, name)
+	if err != nil {
+		return nil, false, err
+	}
+	if ok {
+		if existing.UserID != userID {
+			return nil, false, fmt.Errorf("name %q is taken", name)
+		}
+		return existing, false, nil
+	}
+	app := App{ID: id, UserID: userID, Name: name, Region: "ams", InternalPort: internalPort, EdgeSecret: edgeSecret, Status: "created"}
+	if err := db.CreateApp(ctx, app); err != nil {
+		return nil, false, err
+	}
+	return &app, true, nil
+}
+
+// NextDeploymentSeq returns the next per-app deployment sequence number.
+func (db *DB) NextDeploymentSeq(ctx context.Context, appID string) (int, error) {
+	const q = `SELECT COALESCE(MAX(seq), 0) + 1 FROM deployments WHERE app_id = $1`
+	var seq int
+	err := db.pool.QueryRow(ctx, q, appID).Scan(&seq)
+	return seq, err
+}
+
+// InsertDeployment creates a deployment row.
+func (db *DB) InsertDeployment(ctx context.Context, id, appID string, seq int, status string) error {
+	const q = `INSERT INTO deployments (id, app_id, seq, status) VALUES ($1, $2, $3, $4)`
+	_, err := db.pool.Exec(ctx, q, id, appID, seq, status)
+	return err
+}
+
+// UpdateDeployment sets a deployment's status (+ optional image_ref / error).
+func (db *DB) UpdateDeployment(ctx context.Context, id, status, imageRef, errMsg string) error {
+	const q = `UPDATE deployments SET status = $1,
+	              image_ref = COALESCE(NULLIF($2, ''), image_ref),
+	              error     = NULLIF($3, '')
+	           WHERE id = $4`
+	_, err := db.pool.Exec(ctx, q, status, imageRef, errMsg, id)
+	return err
+}
+
 // SetAppStatus updates an app's lifecycle status.
 func (db *DB) SetAppStatus(ctx context.Context, appID, status string) error {
 	const q = `UPDATE apps SET status = $1, updated_at = now() WHERE id = $2`

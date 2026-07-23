@@ -16,7 +16,6 @@ import (
 	"github.com/ahmetvural79/tunr/relay/internal/db"
 	"github.com/ahmetvural79/tunr/relay/internal/logger"
 	"github.com/ahmetvural79/tunr/relay/internal/relay"
-	"github.com/ahmetvural79/tunr/relay/internal/runner"
 )
 
 // tunr relay sunucusu.
@@ -74,8 +73,8 @@ func main() {
 	// beslenir (LISTEN/NOTIFY). DB yoksa no-op; tünel yolu etkilenmez.
 	routeStore := relay.NewRouteStore()
 	proxy.SetRoutes(routeStore)
-	appDriver := runner.NewDockerDriver() // own-server Docker+gVisor; Waker'ı karşılar
-	relay.NewRouteLoader(database, routeStore, appDriver, nil).Start(ctx)
+	runnerClient := relay.NewRunnerClient(cfg.RunnerURL, cfg.RunnerSecret) // HTTP client to the tunr-runner sidecar (relay stays Docker-free)
+	relay.NewRouteLoader(database, routeStore, runnerClient, nil).Start(ctx)
 
 	// HTTP sunucusu
 	mux := http.NewServeMux()
@@ -99,7 +98,7 @@ func main() {
 
 	// ── Pivot Faz 0: control plane (/v1/apps) ──
 	// App yaratma + cloud route seed'leme (deploy pipeline sonraki aşama).
-	relay.NewControlPlane(jwtAuth, database, cfg.Domain).RegisterRoutes(mux)
+	relay.NewControlPlane(jwtAuth, database, cfg.Domain, runnerClient).RegisterRoutes(mux)
 	if cfg.PaddleWebhookSecret != "" {
 		paddleWebhook := relay.NewPaddleWebhookHandler(database, cfg.PaddleWebhookSecret, relay.PaddlePlanConfig{
 			ProPriceID:      cfg.PaddleProPriceID,
@@ -320,6 +319,8 @@ type Config struct {
 	PaddleTeamProductID   string
 	PaddleDefaultPaidPlan string
 	DevMode               bool
+	RunnerURL             string // tunr-runner sidecar base URL (e.g. http://tunr-runner:9091)
+	RunnerSecret          string
 }
 
 func loadConfig() Config {
@@ -335,6 +336,8 @@ func loadConfig() Config {
 		PaddleTeamProductID:   getEnv("PADDLE_TEAM_PRODUCT_ID", ""),
 		PaddleDefaultPaidPlan: getEnv("PADDLE_DEFAULT_PAID_PLAN", "pro"),
 		DevMode:               getEnv("TUNR_DEV_MODE", "") == "1" || getEnv("TUNR_DEV_MODE", "") == "true",
+		RunnerURL:             getEnv("RUNNER_URL", ""),
+		RunnerSecret:          getEnv("RUNNER_SECRET", ""),
 	}
 
 	// GÜVENLİK: JWT secret zorunlu

@@ -47,6 +47,8 @@ func init() {
 
 	rootCmd.AddCommand(
 		newShareCmd(),
+		newDeployCmd(),
+		newAppsCmd(),
 		newTCPCmd(),
 		newUDPCmd(),
 		newTLSCmd(),

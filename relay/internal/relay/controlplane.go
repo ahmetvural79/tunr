@@ -23,22 +23,24 @@ import (
 	"github.com/ahmetvural79/tunr/relay/internal/logger"
 )
 
-// ControlPlane serves the /v1/apps REST surface.
+// ControlPlane serves the /v1/apps + /v1/deploy REST surface.
 type ControlPlane struct {
 	jwt    *auth.JWTAuth
 	db     *db.DB
 	domain string
+	runner *RunnerClient
 }
 
 // NewControlPlane builds the control plane. database may be nil (in-memory mode);
 // endpoints then return 503 since apps require persistence.
-func NewControlPlane(jwtAuth *auth.JWTAuth, database *db.DB, domain string) *ControlPlane {
-	return &ControlPlane{jwt: jwtAuth, db: database, domain: domain}
+func NewControlPlane(jwtAuth *auth.JWTAuth, database *db.DB, domain string, runner *RunnerClient) *ControlPlane {
+	return &ControlPlane{jwt: jwtAuth, db: database, domain: domain, runner: runner}
 }
 
-// RegisterRoutes mounts /v1/apps on the mux.
+// RegisterRoutes mounts the control-plane endpoints on the mux.
 func (c *ControlPlane) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/apps", c.handleApps)
+	mux.HandleFunc("/v1/deploy", c.handleDeploy)
 }
 
 // authUser extracts and verifies the Bearer JWT, returning the user id.
@@ -227,6 +229,128 @@ func newEdgeSecret() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func newDeploymentID() string {
+	b := make([]byte, 5)
+	_, _ = rand.Read(b)
+	return "dep_" + hex.EncodeToString(b)
+}
+
+// handleDeploy: build + run a project uploaded by the CLI, then route its
+// subdomain to the resulting container. Streams SSE back to the CLI.
+//
+//	POST /v1/deploy  (Bearer JWT)  multipart: meta{name,internal_port,env} + source(tar.gz)
+func (c *ControlPlane) handleDeploy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if c.db == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "deploy requires a database")
+		return
+	}
+	if c.runner == nil || !c.runner.Enabled() {
+		writeJSONError(w, http.StatusServiceUnavailable, "deploy is not available (no runner configured)")
+		return
+	}
+	userID, ok := c.authUser(r)
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "valid Bearer token required (run: tunr login)")
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSONError(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	send := func(v any) {
+		b, _ := json.Marshal(v)
+		fmt.Fprintf(w, "data: %s\n\n", b)
+		flusher.Flush()
+	}
+	fail := func(msg string) { send(map[string]string{"event": "failed", "error": msg}) }
+
+	r.Body = http.MaxBytesReader(w, r.Body, 55<<20)
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		fail("bad multipart: " + err.Error())
+		return
+	}
+	var meta struct {
+		Name         string            `json:"name"`
+		InternalPort int               `json:"internal_port"`
+		Env          map[string]string `json:"env"`
+	}
+	if err := json.Unmarshal([]byte(r.FormValue("meta")), &meta); err != nil {
+		fail("bad meta json")
+		return
+	}
+	meta.Name = strings.ToLower(strings.TrimSpace(meta.Name))
+	if !validSubdomain(meta.Name) {
+		fail("name must be a valid subdomain (a-z, 0-9, dash)")
+		return
+	}
+	if meta.InternalPort == 0 {
+		meta.InternalPort = 8080
+	}
+	src, _, err := r.FormFile("source")
+	if err != nil {
+		fail("missing source file")
+		return
+	}
+	defer src.Close()
+
+	ctx := r.Context()
+
+	app, _, err := c.db.GetOrCreateAppByName(ctx, userID, meta.Name, newAppID(), newEdgeSecret(), meta.InternalPort)
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+
+	seq, err := c.db.NextDeploymentSeq(ctx, app.ID)
+	if err != nil {
+		fail("deployment seq: " + err.Error())
+		return
+	}
+	depID := newDeploymentID()
+	_ = c.db.InsertDeployment(ctx, depID, app.ID, seq, "building")
+
+	runnerMeta, _ := json.Marshal(map[string]any{
+		"app_id":        app.ID,
+		"name":          app.Name,
+		"deployment_id": depID,
+		"internal_port": app.InternalPort,
+		"edge_secret":   app.EdgeSecret,
+		"env":           meta.Env,
+		"memory_mb":     256,
+		"cpus":          1.0,
+	})
+
+	send(map[string]string{"event": "queued", "detail": "sending to builder"})
+	endpoint, err := c.runner.Deploy(ctx, runnerMeta, src, func(ev map[string]any) { send(ev) })
+	if err != nil {
+		_ = c.db.UpdateDeployment(ctx, depID, "failed", "", err.Error())
+		fail(err.Error())
+		return
+	}
+
+	if err := c.db.UpsertCloudRoute(ctx, app.Name, app.ID, endpoint, 30); err != nil {
+		fail("route: " + err.Error())
+		return
+	}
+	_ = c.db.SetAppStatus(ctx, app.ID, "live")
+	_ = c.db.UpdateDeployment(ctx, depID, "healthy", "", "")
+
+	send(map[string]any{
+		"event": "live",
+		"url":   fmt.Sprintf("https://%s.%s", app.Name, c.domain),
+		"seq":   seq,
+	})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
