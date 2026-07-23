@@ -34,6 +34,7 @@ COMPOSE_DIR="${TUNR_COMPOSE_DIR:-/opt/tunr}"
 SRC_DIR="${TUNR_SRC_DIR:-/opt/tunr/src}"
 LANDING_DIR="${TUNR_LANDING_DIR:-/var/www/tunr/landing}"
 HEALTH_URL="${TUNR_HEALTH_URL:-http://127.0.0.1:8080/api/v1/health}"
+APPS_NETWORK="${TUNR_APPS_NETWORK:-tunr-apps}"  # pivot: isolated cloud-runner bridge
 
 # compose -f flag sets. The base file holds postgres+relay; the dashboard add-on
 # shares the same project name ("tunr") so services compose together. Caddy
@@ -115,6 +116,34 @@ if [[ "$MODE" == "full" || "$MODE" == "relay" ]]; then
     cd '$COMPOSE_DIR'
     docker compose $DC_BASE build relay
     docker compose $DC_BASE up -d relay
+  "
+fi
+
+# ── Cloud runner: gVisor + isolated network + relay attachment (pivot Faz 0) ──
+# Idempotent every deploy. The HOST-level install (Docker + gVisor) is done once
+# by scripts/server-setup.sh; here we only ensure the network exists and the relay
+# container is attached so it can reach app containers by name (tunr-app-<id>).
+# NOTE: for the relay to actually drive Docker (wake/deploy app containers) it
+# needs the docker socket + docker CLI (or a runner sidecar). That wiring lives in
+# the server-local compose file and is set up during on-server validation.
+if [[ "$MODE" == "full" || "$MODE" == "relay" ]]; then
+  log "Ensuring cloud-runner network '$APPS_NETWORK' + relay attachment"
+  ssh "$REMOTE" "set -e
+    command -v runsc >/dev/null 2>&1 || echo '  [warn] gVisor (runsc) not installed — run scripts/server-setup.sh'
+    if ! docker network inspect '$APPS_NETWORK' >/dev/null 2>&1; then
+      echo '  creating network $APPS_NETWORK (icc=false)'
+      docker network create --opt com.docker.network.bridge.enable_icc=false '$APPS_NETWORK' >/dev/null
+    fi
+    cd '$COMPOSE_DIR'
+    rid=\$(docker compose $DC_BASE ps -q relay 2>/dev/null || true)
+    if [ -n \"\$rid\" ]; then
+      if docker inspect -f '{{range \$k,\$v := .NetworkSettings.Networks}}{{\$k}} {{end}}' \"\$rid\" | grep -qw '$APPS_NETWORK'; then
+        echo '  relay already attached to $APPS_NETWORK'
+      else
+        echo '  attaching relay to $APPS_NETWORK'
+        docker network connect '$APPS_NETWORK' \"\$rid\"
+      fi
+    fi
   "
 fi
 
