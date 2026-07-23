@@ -10,7 +10,7 @@
 
 <br/><br/>
 
-**Local → Public in < 3 seconds.**
+**The cloud for small software** — deploy, host & share the apps your agent builds. Instant tunnels included.
 
 [![Release](https://img.shields.io/github/v/release/ahmetvural79/tunr?color=7c3aed)](https://github.com/ahmetvural79/tunr/releases)
 [![License: PolyForm Shield](https://img.shields.io/badge/License-PolyForm%20Shield%201.0.0-7c3aed.svg)](LICENSE)
@@ -23,18 +23,37 @@
 ---
 
 ```bash
+# Deploy an app that stays alive after you close your laptop   (preview)
+$ tunr deploy --name sprint
+  🚀 Live:  https://sprint.tunr.sh    (sleeps when idle, wakes on request)
+
+# …or just tunnel localhost in 3 seconds   (stable)
 $ tunr share --port 3000
-
   🚀 Tunnel active:  https://abc1x2y3.tunr.sh
-
-  Ctrl+C to stop...
 ```
 
 ## What is tunr?
 
-**tunr** exposes your local development server to the internet in under 3 seconds — with automatic HTTPS and zero configuration. **Browser WebSockets** (e.g. Next.js / Vite HMR) are bridged over the same control channel as HTTP when you use the tunr relay + CLI; see [Troubleshooting](#troubleshooting) for Next.js `allowedDevOrigins` and edge cases.
+**tunr is the cloud for small software** — the personal and internal tools people now build with coding agents (Claude Code, Cursor). Deploy an app with one command — or one **MCP call from your agent** — and it runs on tunr's infrastructure: it sleeps when idle, wakes on request, and keeps running after you close your laptop. Soon, apps become shareable like a Google Doc: login, viewer/editor roles and comments enforced at the edge, so your app never contains a line of auth code.
 
-It's a developer-first alternative to ngrok and Cloudflare Tunnel, built in Go as a single static binary that runs on macOS, Linux, and Windows (ARM64 included).
+The **3-second tunnel** that tunr started as is still here — free and first-class — now it's the on-ramp: `tunr share --port 3000` gives any localhost an instant public HTTPS URL (HTTP/WebSocket, TCP, UDP, TLS; multi-region), a developer-first alternative to ngrok and Cloudflare Tunnel, shipped as a single static Go binary (macOS, Linux, Windows — ARM64 included).
+
+## Cloud: deploy &amp; share <sup>preview</sup>
+
+Tunnels are how you *preview* localhost. The cloud is where your app *lives*.
+
+```bash
+tunr deploy --name my-app        # build (Nixpacks) + run on tunr; get a live URL
+tunr apps                        # list your cloud apps
+tunr apps logs my-app            # stream build + runtime logs
+```
+
+- **Stays alive** — close your laptop; your app keeps serving. Idle apps sleep and wake on the next request (scale-to-zero).
+- **Agent-native** — everything above is also an **MCP tool**. Tell your agent *"ship this to tunr"* and it calls `deploy_app` for you. The dashboard, CLI and MCP are three faces of one control plane.
+- **Share like a Google Doc** *(rolling out)* — invite people by email or company domain with viewer/editor roles, enforced at the edge; your app writes zero auth code.
+- **Your data travels with it** *(rolling out)* — SQLite-per-app, snapshots, and `tunr rollback` for code *and* data.
+
+> Cloud deploy is in **preview**. Tunnels, the CLI and the vibecoder demo features below are stable today.
 
 
 
