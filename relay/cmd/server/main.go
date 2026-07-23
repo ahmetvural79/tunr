@@ -75,7 +75,10 @@ func main() {
 	proxy.SetRoutes(routeStore)
 	runnerClient := relay.NewRunnerClient(cfg.RunnerURL, cfg.RunnerSecret) // HTTP client to the tunr-runner sidecar (relay stays Docker-free)
 	relay.NewRouteLoader(database, routeStore, runnerClient, nil).Start(ctx)
-	relay.StartIdleSweeper(ctx, routeStore, runnerClient, 5*time.Minute, 2*time.Hour) // scale-to-zero
+	// Scale-to-zero: pause idle apps at 5m (RAM resident, instant resume). Cold-stop
+	// is disabled (idleStop=0) — `docker start` reassigns the container IP and would
+	// stale the route; re-enable once wake returns + persists the new endpoint.
+	relay.StartIdleSweeper(ctx, routeStore, runnerClient, 5*time.Minute, 0)
 
 	// HTTP sunucusu
 	mux := http.NewServeMux()

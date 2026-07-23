@@ -42,7 +42,7 @@ func StartIdleSweeper(ctx context.Context, store *RouteStore, r appSleeper, idle
 				idle := now.Sub(last)
 				cur := phase[up.AppID]
 				switch {
-				case idle >= idleStop && cur < 2:
+				case idleStop > 0 && idle >= idleStop && cur < 2:
 					if err := r.Stop(ctx, up.AppID); err == nil {
 						up.SetSleeping(true)
 						phase[up.AppID] = 2
