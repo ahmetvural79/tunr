@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os/signal"
 	"syscall"
 
@@ -77,9 +80,41 @@ Cursor (.cursor/mcp.json):
 				return fmt.Errorf("no tunnel with id %q", id)
 			}
 
+			// appsLister queries the cloud control plane for the user's deployed apps.
+			appsLister := func() ([]mcp.AppInfo, error) {
+				if token == "" {
+					return nil, fmt.Errorf("not logged in — run: tunr login")
+				}
+				req, err := http.NewRequestWithContext(ctx, http.MethodGet, relayURL()+"/v1/apps", nil)
+				if err != nil {
+					return nil, err
+				}
+				req.Header.Set("Authorization", "Bearer "+token)
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					return nil, err
+				}
+				defer resp.Body.Close()
+				if resp.StatusCode == http.StatusUnauthorized {
+					return nil, fmt.Errorf("not logged in — run: tunr login")
+				}
+				if resp.StatusCode != http.StatusOK {
+					b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+					return nil, fmt.Errorf("control plane returned %d: %s", resp.StatusCode, string(b))
+				}
+				var out struct {
+					Apps []mcp.AppInfo `json:"apps"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+					return nil, err
+				}
+				return out.Apps, nil
+			}
+
 			server := mcp.New(ins, snapshot).
 				WithTunnelStarter(starter).
-				WithTunnelStopper(stopper)
+				WithTunnelStopper(stopper).
+				WithAppsLister(appsLister)
 
 			defer mgr.StopAll()
 			return server.Serve(ctx)

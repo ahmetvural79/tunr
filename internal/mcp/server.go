@@ -62,6 +62,7 @@ type Server struct {
 	getTunnels  func() []TunnelInfo
 	startTunnel TunnelStarter
 	stopTunnel  TunnelStopper
+	listApps    AppsLister
 	in          io.Reader
 	out         io.Writer
 }
@@ -105,6 +106,23 @@ func (s *Server) WithTunnelStarter(fn TunnelStarter) *Server {
 // WithTunnelStopper wires the stop tool to a real tunnel manager.
 func (s *Server) WithTunnelStopper(fn TunnelStopper) *Server {
 	s.stopTunnel = fn
+	return s
+}
+
+// AppInfo is a cloud app summary for MCP responses.
+type AppInfo struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	URL    string `json:"url"`
+	Status string `json:"status"`
+}
+
+// AppsLister returns the current user's deployed cloud apps (via the control plane).
+type AppsLister func() ([]AppInfo, error)
+
+// WithAppsLister wires the tunr_list_apps tool to the cloud control plane.
+func (s *Server) WithAppsLister(fn AppsLister) *Server {
+	s.listApps = fn
 	return s
 }
 
@@ -252,6 +270,14 @@ func (s *Server) toolList() []map[string]interface{} {
 			},
 		},
 		{
+			"name":        "tunr_list_apps",
+			"description": "List the cloud apps you've deployed to tunr — name, live URL and status. These are persistent apps that keep running after your laptop closes (separate from live tunnels). Requires `tunr login`.",
+			"inputSchema": map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
 			"name":        "tunr_stop",
 			"description": "Stop a specific tunnel by its ID.",
 			"inputSchema": map[string]interface{}{
@@ -291,6 +317,8 @@ func (s *Server) handleToolCall(req *JSONRPCRequest) {
 		s.toolReplay(req.ID, params.Arguments)
 	case "tunr_stop":
 		s.toolStop(req.ID, params.Arguments)
+	case "tunr_list_apps":
+		s.toolListApps(req.ID)
 	default:
 		s.sendError(req.ID, -32601, fmt.Sprintf("unknown tool: %s", params.Name))
 	}
@@ -449,6 +477,27 @@ func (s *Server) toolStop(id interface{}, args json.RawMessage) {
 }
 
 // ─── Response Helpers ─────────────────────────────────────────────────────────
+
+func (s *Server) toolListApps(id interface{}) {
+	if s.listApps == nil {
+		s.sendToolError(id, "cloud apps are not available in this context")
+		return
+	}
+	apps, err := s.listApps()
+	if err != nil {
+		s.sendToolError(id, err.Error())
+		return
+	}
+	if len(apps) == 0 {
+		s.sendToolResult(id, "No cloud apps yet. Deploy one with: tunr deploy --name my-app")
+		return
+	}
+	out := fmt.Sprintf("%d cloud app(s):", len(apps))
+	for _, a := range apps {
+		out += fmt.Sprintf("\n• %s — %s (%s)", a.Name, a.URL, a.Status)
+	}
+	s.sendToolResult(id, out)
+}
 
 func (s *Server) sendResult(id interface{}, result interface{}) {
 	s.send(JSONRPCResponse{JSONRPC: "2.0", ID: id, Result: result})

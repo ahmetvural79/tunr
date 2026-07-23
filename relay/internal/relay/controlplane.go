@@ -83,7 +83,7 @@ func (c *ControlPlane) handleApps(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		c.createApp(w, r, userID)
 	case http.MethodGet:
-		writeJSONError(w, http.StatusNotImplemented, "app listing arrives with the full deploy pipeline")
+		c.listApps(w, r, userID)
 	case http.MethodDelete:
 		c.deleteApp(w, r, userID)
 	default:
@@ -152,6 +152,24 @@ func (c *ControlPlane) createApp(w http.ResponseWriter, r *http.Request, userID 
 		CloudURL: cloudURL,
 		Status:   "live",
 	})
+}
+
+func (c *ControlPlane) listApps(w http.ResponseWriter, r *http.Request, userID string) {
+	rows, err := c.db.ListAppsByUser(r.Context(), userID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not list apps")
+		return
+	}
+	apps := make([]appResp, 0, len(rows))
+	for _, a := range rows {
+		apps = append(apps, appResp{
+			ID:     a.ID,
+			Name:   a.Name,
+			URL:    fmt.Sprintf("https://%s.%s", a.Name, c.domain),
+			Status: a.Status,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"apps": apps})
 }
 
 func (c *ControlPlane) deleteApp(w http.ResponseWriter, r *http.Request, userID string) {

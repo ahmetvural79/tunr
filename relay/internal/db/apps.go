@@ -84,6 +84,38 @@ func (db *DB) DeleteApp(ctx context.Context, appID string) error {
 	return err
 }
 
+// AppListRow is a compact app row for CLI/MCP listings.
+type AppListRow struct {
+	ID     string
+	Name   string
+	Region string
+	Status string
+}
+
+// ListAppsByUser returns the user's apps, newest first.
+func (db *DB) ListAppsByUser(ctx context.Context, userID string) ([]AppListRow, error) {
+	const q = `
+		SELECT id, name, region, status
+		FROM apps
+		WHERE user_id = $1::uuid
+		ORDER BY created_at DESC
+		LIMIT 100`
+	rows, err := db.pool.Query(ctx, q, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AppListRow
+	for rows.Next() {
+		var a AppListRow
+		if err := rows.Scan(&a.ID, &a.Name, &a.Region, &a.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // UpsertCloudRoute maps a subdomain to a cloud upstream (fires NOTIFY routes_changed).
 func (db *DB) UpsertCloudRoute(ctx context.Context, subdomain, appID, cloudURL string, wakeTimeout int) error {
 	if wakeTimeout <= 0 {
