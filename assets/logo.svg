@@ -1,13 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" role="img" aria-label="tunr">
   <defs>
-    <linearGradient id="tunrG" x1="80" y1="60" x2="440" y2="460" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#8b5cf6"/>
-      <stop offset="1" stop-color="#6d28d9"/>
+    <linearGradient id="tunrG" x1="90" y1="80" x2="430" y2="440" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7c3aed"/>
+      <stop offset="0.55" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#06b6d4"/>
     </linearGradient>
   </defs>
-  <rect x="36" y="36" width="440" height="440" rx="116" fill="url(#tunrG)"/>
-  <!-- ship it: an upward launch arrow (deploy / send to the world) -->
-  <path d="M256 132 L360 274 H300 V360 H212 V274 H152 Z" fill="#ffffff" stroke="#ffffff" stroke-width="10" stroke-linejoin="round"/>
-  <!-- launch pad -->
-  <rect x="196" y="392" width="120" height="26" rx="13" fill="#ffffff" opacity="0.85"/>
+  <!-- plug prongs (connect / tunnel into the internet) -->
+  <rect x="206" y="110" width="32" height="82" rx="15" fill="url(#tunrG)"/>
+  <rect x="262" y="110" width="32" height="82" rx="15" fill="url(#tunrG)"/>
+  <!-- the t: crossbar + stem -->
+  <rect x="110" y="186" width="184" height="54" rx="26" fill="url(#tunrG)"/>
+  <rect x="206" y="186" width="88" height="210" rx="36" fill="url(#tunrG)"/>
+  <!-- the connector "c" (opening toward the stem) -->
+  <path d="M300 236 A84 84 0 1 1 300 372" fill="none" stroke="url(#tunrG)" stroke-width="54" stroke-linecap="round"/>
 </svg>
