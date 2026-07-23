@@ -156,7 +156,8 @@ func (d *DockerDriver) Deploy(ctx context.Context, dep DeploySpec) (Endpoint, er
 }
 
 func (d *DockerDriver) containerIP(ctx context.Context, name string) (string, error) {
-	format := fmt.Sprintf(`{{.NetworkSettings.Networks.%s.IPAddress}}`, d.Network)
+	// index (not .Networks.<name>) because network names contain dashes.
+	format := fmt.Sprintf(`{{(index .NetworkSettings.Networks "%s").IPAddress}}`, d.Network)
 	ip, err := d.docker(ctx, "inspect", "-f", format, name)
 	if err != nil || ip == "" || ip == "<no value>" {
 		return "", fmt.Errorf("container %s has no IP on %s (err=%v)", name, d.Network, err)
