@@ -119,29 +119,38 @@ if [[ "$MODE" == "full" || "$MODE" == "relay" ]]; then
   "
 fi
 
-# ── Cloud runner: gVisor + isolated network + relay attachment (pivot Faz 0) ──
-# Idempotent every deploy. The HOST-level install (Docker + gVisor) is done once
-# by scripts/server-setup.sh; here we only ensure the network exists and the relay
-# container is attached so it can reach app containers by name (tunr-app-<id>).
-# NOTE: for the relay to actually drive Docker (wake/deploy app containers) it
-# needs the docker socket + docker CLI (or a runner sidecar). That wiring lives in
-# the server-local compose file and is set up during on-server validation.
+# ── Cloud runner: network + runner sidecar + relay attachment + relay-allow ──
+# Idempotent every deploy — self-heals the relay→app path. Host-level install
+# (Docker + gVisor) is done once by scripts/server-setup.sh.
+#   1) tunr-apps network (icc=false: tenants can't reach each other)
+#   2) tunr-runner sidecar up (drives Docker: build/run/wake app containers)
+#   3) relay attached to tunr-apps (so it can dial app container IPs)
+#   4) DOCKER-USER "relay-allow" rule: icc=false blocks relay→app too, so we
+#      explicitly permit the relay's IP → the apps bridge.
 if [[ "$MODE" == "full" || "$MODE" == "relay" ]]; then
-  log "Ensuring cloud-runner network '$APPS_NETWORK' + relay attachment"
+  log "Ensuring cloud-runner (network + sidecar + relay attach + relay-allow)"
   ssh "$REMOTE" "set -e
+    cd '$COMPOSE_DIR'
     command -v runsc >/dev/null 2>&1 || echo '  [warn] gVisor (runsc) not installed — run scripts/server-setup.sh'
     if ! docker network inspect '$APPS_NETWORK' >/dev/null 2>&1; then
       echo '  creating network $APPS_NETWORK (icc=false)'
       docker network create --opt com.docker.network.bridge.enable_icc=false '$APPS_NETWORK' >/dev/null
     fi
-    cd '$COMPOSE_DIR'
+    if [ -f docker-compose.runner.yml ]; then
+      docker compose $DC_BASE -f docker-compose.runner.yml up -d runner >/dev/null 2>&1 && echo '  runner sidecar up' || echo '  [warn] runner up failed'
+    else
+      echo '  [warn] docker-compose.runner.yml missing — deploy pipeline offline'
+    fi
     rid=\$(docker compose $DC_BASE ps -q relay 2>/dev/null || true)
     if [ -n \"\$rid\" ]; then
-      if docker inspect -f '{{range \$k,\$v := .NetworkSettings.Networks}}{{\$k}} {{end}}' \"\$rid\" | grep -qw '$APPS_NETWORK'; then
-        echo '  relay already attached to $APPS_NETWORK'
-      else
-        echo '  attaching relay to $APPS_NETWORK'
-        docker network connect '$APPS_NETWORK' \"\$rid\"
+      docker inspect -f '{{range \$k,\$v := .NetworkSettings.Networks}}{{\$k}} {{end}}' \"\$rid\" | grep -qw '$APPS_NETWORK' \
+        || { docker network connect '$APPS_NETWORK' \"\$rid\"; echo '  attached relay to $APPS_NETWORK'; }
+      BR=\"br-\$(docker network inspect '$APPS_NETWORK' -f '{{.Id}}' | cut -c1-12)\"
+      RIP=\$(docker inspect -f '{{(index .NetworkSettings.Networks \"$APPS_NETWORK\").IPAddress}}' \"\$rid\")
+      if [ -n \"\$RIP\" ]; then
+        iptables -D DOCKER-USER -i \"\$BR\" -o \"\$BR\" -s \"\$RIP/32\" -j ACCEPT 2>/dev/null || true
+        iptables -I DOCKER-USER -i \"\$BR\" -o \"\$BR\" -s \"\$RIP/32\" -j ACCEPT
+        echo \"  relay-allow iptables rule set (\$RIP → $APPS_NETWORK)\"
       fi
     fi
   "

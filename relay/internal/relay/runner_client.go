@@ -74,6 +74,35 @@ func (c *RunnerClient) Delete(ctx context.Context, appID string) error {
 	return nil
 }
 
+// Sleep pauses an idle app (RAM resident, instant resume). Stop cold-stops it.
+func (c *RunnerClient) Sleep(ctx context.Context, appID string) error {
+	return c.postApp(ctx, appID, "sleep")
+}
+func (c *RunnerClient) Stop(ctx context.Context, appID string) error {
+	return c.postApp(ctx, appID, "stop")
+}
+
+func (c *RunnerClient) postApp(ctx context.Context, appID, action string) error {
+	if c.baseURL == "" {
+		return nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/apps/"+appID+"/"+action, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.secret)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("runner %s %d: %s", action, resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
 // Deploy uploads source to the runner and streams its SSE events to onEvent.
 // It returns the app's dialable endpoint (from the "ready" event) on success.
 func (c *RunnerClient) Deploy(ctx context.Context, metaJSON []byte, source io.Reader, onEvent func(map[string]any)) (string, error) {

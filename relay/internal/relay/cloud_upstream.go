@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ahmetvural79/tunr/relay/internal/logger"
@@ -54,10 +55,17 @@ type CloudUpstream struct {
 
 	initOnce sync.Once
 	proxy    *httputil.ReverseProxy
-	// lastSeen feeds the idle sweeper (control plane reads it to Sleep/Stop apps).
+	// lastSeen feeds the idle sweeper (reads it to Sleep/Stop apps).
 	lastSeenMu sync.Mutex
 	lastSeen   time.Time
+	// sleeping is set by the idle sweeper when it pauses/stops the app; the next
+	// request then wakes it BEFORE probing (a paused container still completes the
+	// TCP handshake in the kernel, so probing alone would never trigger a wake).
+	sleeping atomic.Bool
 }
+
+// SetSleeping marks whether the app has been paused/stopped by the sweeper.
+func (u *CloudUpstream) SetSleeping(v bool) { u.sleeping.Store(v) }
 
 // NewCloudUpstream builds a CloudUpstream with a 30s default wake budget.
 func NewCloudUpstream(appID string, target *url.URL, secret []byte, wake Waker, freeze FreezeCache) *CloudUpstream {
@@ -138,6 +146,18 @@ func (u *CloudUpstream) ensureDialable(ctx context.Context) error {
 			_ = c.Close()
 		}
 		return err
+	}
+
+	// If the sweeper paused/stopped this app, wake it first — a paused container
+	// still completes the TCP handshake in the kernel, so probe success alone
+	// would never trigger a wake and the request would hang on the frozen process.
+	if u.sleeping.Load() && u.Waker != nil {
+		wctx, wcancel := context.WithTimeout(ctx, 12*time.Second)
+		if err := u.Waker.Wake(wctx, u.AppID); err != nil {
+			logger.Warn("cloud pre-wake %s: %v", u.AppID, err)
+		}
+		wcancel()
+		u.sleeping.Store(false)
 	}
 
 	if probe() == nil {

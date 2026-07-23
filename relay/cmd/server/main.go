@@ -75,6 +75,7 @@ func main() {
 	proxy.SetRoutes(routeStore)
 	runnerClient := relay.NewRunnerClient(cfg.RunnerURL, cfg.RunnerSecret) // HTTP client to the tunr-runner sidecar (relay stays Docker-free)
 	relay.NewRouteLoader(database, routeStore, runnerClient, nil).Start(ctx)
+	relay.StartIdleSweeper(ctx, routeStore, runnerClient, 5*time.Minute, 2*time.Hour) // scale-to-zero
 
 	// HTTP sunucusu
 	mux := http.NewServeMux()
