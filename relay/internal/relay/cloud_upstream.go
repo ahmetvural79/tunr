@@ -33,7 +33,10 @@ import (
 // the own-server path; on Fly it's a no-op (Fly Proxy wakes machines itself).
 // Defined as a local interface so package relay doesn't hard-depend on runner.
 type Waker interface {
-	Wake(ctx context.Context, appID string) error
+	// Wake makes the app dialable and returns its CURRENT IP (may be empty if
+	// unknown). The IP can change across a cold stop→start, so callers update
+	// their target with it.
+	Wake(ctx context.Context, appID string) (ip string, err error)
 }
 
 // FreezeCache is implemented by a freeze-mode store: last good response per
@@ -55,6 +58,7 @@ type CloudUpstream struct {
 
 	initOnce sync.Once
 	proxy    *httputil.ReverseProxy
+	targetMu sync.RWMutex // guards Target.Host, which can move across a cold restart
 	// lastSeen feeds the idle sweeper (reads it to Sleep/Stop apps).
 	lastSeenMu sync.Mutex
 	lastSeen   time.Time
@@ -78,7 +82,10 @@ func NewCloudUpstream(appID string, target *url.URL, secret []byte, wake Waker, 
 func (u *CloudUpstream) init() {
 	u.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.SetURL(u.Target)
+			u.targetMu.RLock()
+			target := *u.Target
+			u.targetMu.RUnlock()
+			pr.SetURL(&target)
 			pr.SetXForwarded()
 			// Keep the PUBLIC host so the app sees its real URL
 			// (myapp.tunr.sh), not the container IP.
@@ -139,8 +146,10 @@ func (u *CloudUpstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // ensureDialable probes TCP; on failure asks the Waker once, then keeps
 // probing with backoff until the budget runs out.
 func (u *CloudUpstream) ensureDialable(ctx context.Context) error {
-	addr := u.Target.Host // host:port
 	probe := func() error {
+		u.targetMu.RLock()
+		addr := u.Target.Host
+		u.targetMu.RUnlock()
 		c, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 		if err == nil {
 			_ = c.Close()
@@ -153,8 +162,10 @@ func (u *CloudUpstream) ensureDialable(ctx context.Context) error {
 	// would never trigger a wake and the request would hang on the frozen process.
 	if u.sleeping.Load() && u.Waker != nil {
 		wctx, wcancel := context.WithTimeout(ctx, 12*time.Second)
-		if err := u.Waker.Wake(wctx, u.AppID); err != nil {
+		if ip, err := u.Waker.Wake(wctx, u.AppID); err != nil {
 			logger.Warn("cloud pre-wake %s: %v", u.AppID, err)
+		} else {
+			u.updateHost(ip)
 		}
 		wcancel()
 		u.sleeping.Store(false)
@@ -165,9 +176,11 @@ func (u *CloudUpstream) ensureDialable(ctx context.Context) error {
 	}
 	if u.Waker != nil {
 		wctx, wcancel := context.WithTimeout(ctx, 10*time.Second)
-		if err := u.Waker.Wake(wctx, u.AppID); err != nil {
+		if ip, err := u.Waker.Wake(wctx, u.AppID); err != nil {
 			// Log but keep probing — the unit may still be coming up.
 			logger.Warn("cloud wake %s: %v", u.AppID, err)
+		} else {
+			u.updateHost(ip)
 		}
 		wcancel()
 	}
@@ -184,6 +197,25 @@ func (u *CloudUpstream) ensureDialable(ctx context.Context) error {
 		if backoff < 2*time.Second {
 			backoff *= 2
 		}
+	}
+}
+
+// updateHost swaps the target's IP (keeping the port) after a cold restart moved
+// it. Safe under concurrent proxying via targetMu.
+func (u *CloudUpstream) updateHost(newIP string) {
+	if newIP == "" {
+		return
+	}
+	u.targetMu.Lock()
+	defer u.targetMu.Unlock()
+	_, port, err := net.SplitHostPort(u.Target.Host)
+	if err != nil || port == "" {
+		port = "8080"
+	}
+	nh := net.JoinHostPort(newIP, port)
+	if u.Target.Host != nh {
+		u.Target.Host = nh
+		logger.Info("cloud %s: endpoint → %s", u.AppID, nh)
 	}
 }
 

@@ -34,26 +34,31 @@ func NewRunnerClient(baseURL, secret string) *RunnerClient {
 // Enabled reports whether a runner is configured.
 func (c *RunnerClient) Enabled() bool { return c.baseURL != "" }
 
-// Wake implements the Waker interface used by CloudUpstream.
-func (c *RunnerClient) Wake(ctx context.Context, appID string) error {
+// Wake implements the Waker interface used by CloudUpstream. It returns the
+// app's current IP (the container may have moved across a cold stop→start).
+func (c *RunnerClient) Wake(ctx context.Context, appID string) (string, error) {
 	if c.baseURL == "" {
-		return nil // no runner (e.g. dev) — CloudUpstream will just probe
+		return "", nil // no runner (e.g. dev) — CloudUpstream will just probe
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/apps/"+appID+"/wake", nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.secret)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("runner wake %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return "", fmt.Errorf("runner wake %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
-	return nil
+	var out struct {
+		IP string `json:"ip"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return out.IP, nil
 }
 
 // Delete removes an app's container via the runner.

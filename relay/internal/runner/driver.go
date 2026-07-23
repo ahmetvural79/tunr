@@ -152,7 +152,24 @@ func (d *DockerDriver) Deploy(ctx context.Context, dep DeploySpec) (Endpoint, er
 	if err != nil {
 		return Endpoint{}, err
 	}
+	// Reclaim disk: nixpacks images are large (~900MB); drop this app's older tags.
+	go d.pruneOldImages(context.Background(), dep.App.ID, dep.ImageRef)
 	return Endpoint{URL: fmt.Sprintf("http://%s:%d", ip, port)}, nil
+}
+
+// pruneOldImages removes every image tag for an app except the one just deployed.
+func (d *DockerDriver) pruneOldImages(ctx context.Context, appID, keep string) {
+	out, err := d.docker(ctx, "images", "tunr-app-"+appID, "--format", "{{.Repository}}:{{.Tag}}")
+	if err != nil {
+		return
+	}
+	for _, ref := range strings.Split(out, "\n") {
+		ref = strings.TrimSpace(ref)
+		if ref == "" || ref == keep {
+			continue
+		}
+		_, _ = d.docker(ctx, "rmi", "-f", ref)
+	}
 }
 
 func (d *DockerDriver) containerIP(ctx context.Context, name string) (string, error) {
@@ -163,6 +180,12 @@ func (d *DockerDriver) containerIP(ctx context.Context, name string) (string, er
 		return "", fmt.Errorf("container %s has no IP on %s (err=%v)", name, d.Network, err)
 	}
 	return ip, nil
+}
+
+// IP returns the app container's current IP on the app network (after Wake/Deploy).
+// Used so callers can re-target after a cold stop→start reassigns the IP.
+func (d *DockerDriver) IP(ctx context.Context, appID string) (string, error) {
+	return d.containerIP(ctx, d.container(appID))
 }
 
 func (d *DockerDriver) Wake(ctx context.Context, appID string) error {

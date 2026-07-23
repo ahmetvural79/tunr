@@ -82,6 +82,8 @@ func main() {
 	drv = runner.NewDockerDriver()
 	drv.Runtime = *runtime
 
+	go pruneLoop() // periodic build-cache reclamation
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprintln(w, "ok") })
 	mux.HandleFunc("/v1/deploy", auth(handleDeploy))
@@ -89,6 +91,20 @@ func main() {
 
 	log.Printf("tunr-runner listening on %s (runtime=%s)", *listen, *runtime)
 	log.Fatal(http.ListenAndServe(*listen, mux))
+}
+
+// pruneLoop periodically reclaims Docker build cache + dangling images. Nixpacks
+// builds accumulate cache fast; without this the disk fills up (a real constraint).
+func pruneLoop() {
+	tick := time.NewTicker(6 * time.Hour)
+	defer tick.Stop()
+	for range tick.C {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		_ = exec.CommandContext(ctx, "docker", "builder", "prune", "-f", "--keep-storage", "20GB").Run()
+		_ = exec.CommandContext(ctx, "docker", "image", "prune", "-f").Run()
+		cancel()
+		log.Println("prune: reclaimed build cache (kept 20GB) + dangling images")
+	}
 }
 
 // ---------- auth ----------
@@ -223,7 +239,8 @@ func handleApp(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"deleted": appID})
 	case r.Method == http.MethodPost && action == "wake":
 		_ = drv.Wake(ctx, appID) // best-effort; relay probes for readiness
-		writeJSON(w, map[string]string{"woken": appID})
+		ip, _ := drv.IP(ctx, appID)
+		writeJSON(w, map[string]string{"woken": appID, "ip": ip})
 	case r.Method == http.MethodPost && action == "sleep":
 		if err := drv.Sleep(ctx, appID); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

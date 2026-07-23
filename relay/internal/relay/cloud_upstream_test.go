@@ -14,9 +14,9 @@ import (
 )
 
 // wakerFunc adapts a func to the Waker interface.
-type wakerFunc func(ctx context.Context, appID string) error
+type wakerFunc func(ctx context.Context, appID string) (string, error)
 
-func (f wakerFunc) Wake(ctx context.Context, appID string) error { return f(ctx, appID) }
+func (f wakerFunc) Wake(ctx context.Context, appID string) (string, error) { return f(ctx, appID) }
 
 // verifyEdge recomputes the X-Tunr-Edge HMAC the way tunr-shim will, and reports
 // whether the request carried a valid signature. host/path are what the upstream sees.
@@ -47,9 +47,9 @@ func TestCloudUpstream_HappyPath(t *testing.T) {
 
 	var wakeCalls int32
 	up := NewCloudUpstream("a_test", target, secret,
-		wakerFunc(func(ctx context.Context, appID string) error {
+		wakerFunc(func(ctx context.Context, appID string) (string, error) {
 			atomic.AddInt32(&wakeCalls, 1)
-			return nil
+			return "", nil
 		}), nil)
 	up.WakeTimeout = 5 * time.Second
 
@@ -88,16 +88,16 @@ func TestCloudUpstream_WakeOnRequest(t *testing.T) {
 	})
 
 	var wakeCalls int32
-	waker := wakerFunc(func(ctx context.Context, appID string) error {
+	waker := wakerFunc(func(ctx context.Context, appID string) (string, error) {
 		atomic.AddInt32(&wakeCalls, 1)
 		// Simulate the driver bringing the app up: start serving on addr.
 		l, err := net.Listen("tcp", addr)
 		if err != nil {
-			return err
+			return "", err
 		}
 		srv := &http.Server{Handler: handler}
 		go func() { _ = srv.Serve(l) }()
-		return nil
+		return "", nil
 	})
 
 	target, _ := url.Parse("http://" + addr)
