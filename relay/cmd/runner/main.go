@@ -197,19 +197,30 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 }
 
 func build(ctx context.Context, dir, imageRef string, noCache bool, sse *sseWriter) error {
-	// Dockerfile wins; otherwise Nixpacks auto-detects the stack.
+	// 1. explicit Dockerfile wins (power-user escape hatch).
 	if _, err := os.Stat(filepath.Join(dir, "Dockerfile")); err == nil {
-		args := []string{"build", "-t", imageRef}
-		if noCache {
-			args = append(args, "--no-cache")
-		}
-		return streamCmd(ctx, sse, "docker", append(args, dir)...)
+		return dockerBuild(ctx, dir, imageRef, noCache, sse)
 	}
+	// 2. our slim/distroless Dockerfile for common stacks → small images (~150MB).
+	if label := generateSlimDockerfile(dir); label != "" {
+		sse.event("building", "slim image ("+label+")")
+		return dockerBuild(ctx, dir, imageRef, noCache, sse)
+	}
+	// 3. Nixpacks fallback — any stack, but a large (~900MB) image.
+	sse.event("building", "nixpacks (fallback)")
 	args := []string{"build", dir, "--name", imageRef}
 	if noCache {
 		args = append(args, "--no-cache")
 	}
 	return streamCmd(ctx, sse, "nixpacks", args...)
+}
+
+func dockerBuild(ctx context.Context, dir, imageRef string, noCache bool, sse *sseWriter) error {
+	args := []string{"build", "-t", imageRef}
+	if noCache {
+		args = append(args, "--no-cache")
+	}
+	return streamCmd(ctx, sse, "docker", append(args, dir)...)
 }
 
 // ---------- lifecycle (wake/sleep/stop/status/delete) ----------
