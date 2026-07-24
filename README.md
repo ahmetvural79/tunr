@@ -38,7 +38,7 @@ $ tunr share --port 3000
 
 The **3-second tunnel** that tunr started as is still here — free and first-class — now it's the on-ramp: `tunr share --port 3000` gives any localhost an instant public HTTPS URL (HTTP/WebSocket, TCP, UDP, TLS; multi-region), a developer-first alternative to ngrok and Cloudflare Tunnel, shipped as a single static Go binary (macOS, Linux, Windows — ARM64 included).
 
-## Cloud: deploy &amp; share <sup>preview</sup>
+## Cloud: deploy &amp; share 
 
 Tunnels are how you *preview* localhost. The cloud is where your app *lives*.
 
@@ -53,7 +53,6 @@ tunr apps logs my-app            # stream build + runtime logs
 - **Share like a Google Doc** *(rolling out)* — invite people by email or company domain with viewer/editor roles, enforced at the edge; your app writes zero auth code.
 - **Your data travels with it** *(rolling out)* — SQLite-per-app, snapshots, and `tunr rollback` for code *and* data.
 
-> Cloud deploy is in **preview**. Tunnels, the CLI and the vibecoder demo features below are stable today.
 
 
 
