@@ -3,6 +3,35 @@
 All notable changes to tunr are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## v0.5.0 — 2026-07-24
+
+This release marks the start of tunr's shift from a pure tunneling CLI toward a
+place to **deploy, host and share the apps your agent builds**. The tunnel
+(`tunr share`) stays free and first-class — it's now the on-ramp.
+
+> **Cloud deploy (`tunr deploy`) is in private preview** and not part of this
+> open-source build yet. This release ships the brand refresh plus build and
+> robustness hardening; the tunnel/CLI feature set is unchanged and stable.
+
+### Changed
+- **brand:** new "t+c" monogram logo (renders navy in light UI, knocks out to
+  white in dark), matching wordmark, and reworked positioning across the README,
+  landing and dashboard.
+
+### Fixed
+- **cli:** `tcp` — check the forwarded `conn.Write`, close the WebSocket
+  handshake response body, and drop an unused struct field.
+- **cli:** `service uninstall` — the best-effort `systemctl`/`launchctl` calls no
+  longer trip `errcheck`.
+- **cli:** `up` — dropped a redundant `fmt.Sprintf("%s", …)`.
+- **relay:** guard the `SetWriteDeadline` return in the TCP write path.
+
+### CI / Build
+- Pin the CI Go toolchain to 1.23: newer macOS runners' dyld rejected the
+  race-instrumented test binaries older Go produced (`missing LC_UUID load
+  command / abort trap`). Green across ubuntu/macos/windows again.
+- `gofmt` + `golangci-lint` clean on both modules.
+
 ## v0.4.1 — 2026-06-11
 
 ### Security
