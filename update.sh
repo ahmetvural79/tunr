@@ -2,7 +2,7 @@
 # update.sh — sync this repo to the tunr production box and rebuild the
 # docker-compose stack (relay + dashboard) and refresh the static landing.
 #
-# The server (167.233.102.96) runs everything as docker compose project "tunr"
+# The server (91.98.42.7) runs everything as docker compose project "tunr"
 # under /opt/tunr:
 #   docker-compose.yml            postgres + relay   (relay built from src/relay)
 #   docker-compose.dashboard.yml  dashboard          (Next.js, built from src/landing/app)
@@ -18,9 +18,9 @@
 #   ./update.sh --dashboard-only # dashboard rebuild/restart (e.g. after editing its .env.local)
 #
 # Requirements:
-#   - SSH host alias `tunr-prod` in ~/.ssh/config → 167.233.102.96
+#   - SSH host alias `tunr-prod` in ~/.ssh/config → 91.98.42.7
 #     (User root, IdentityFile ~/.ssh/id_ed25519). Override with
-#     TUNR_REMOTE=root@167.233.102.96 to bypass the alias.
+#     TUNR_REMOTE=root@91.98.42.7 to bypass the alias.
 #   - On the server: /opt/tunr (compose project root), /opt/tunr/src the rsync
 #     checkout, Docker Engine + Compose v2. The server keeps its own secrets in
 #     /opt/tunr/.env and /opt/tunr/src/landing/app/.env.local — this script never
@@ -57,7 +57,7 @@ log "Target host: $REMOTE  (mode: $MODE)"
 
 # ── Pre-flight: verify SSH ────────────────────────────────────────────────────
 if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$REMOTE" true 2>/dev/null; then
-  die "SSH to $REMOTE failed. Check ~/.ssh/config (Host tunr-prod → 167.233.102.96, User root) and that your key is in the server's authorized_keys."
+  die "SSH to $REMOTE failed. Check ~/.ssh/config (Host tunr-prod → 91.98.42.7, User root) and that your key is in the server's authorized_keys."
 fi
 
 # ── Push source via rsync (skips secrets and build artefacts) ─────────────────
