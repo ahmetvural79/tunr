@@ -124,7 +124,7 @@ Then run: tunr up`,
 
 					proto_str := "HTTP"
 					if d.Protocol != "" {
-						proto_str = fmt.Sprintf("%s", d.Protocol)
+						proto_str = d.Protocol
 					}
 					term.Green.Printf("  ✓ ")
 					fmt.Printf("%-12s ", n)

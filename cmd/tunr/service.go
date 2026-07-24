@@ -195,17 +195,17 @@ func newServiceUninstallCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			switch runtime.GOOS {
 			case "linux":
-				exec.Command("systemctl", "stop", "tunr").Run()
-				exec.Command("systemctl", "disable", "tunr").Run()
-				os.Remove("/etc/systemd/system/tunr.service")
-				exec.Command("systemctl", "daemon-reload").Run()
+				_ = exec.Command("systemctl", "stop", "tunr").Run()
+				_ = exec.Command("systemctl", "disable", "tunr").Run()
+				_ = os.Remove("/etc/systemd/system/tunr.service")
+				_ = exec.Command("systemctl", "daemon-reload").Run()
 				term.Green.Println("  ✓ tunr service removed")
 
 			case "darwin":
 				home, _ := os.UserHomeDir()
 				plistPath := filepath.Join(home, "Library", "LaunchAgents", "sh.tunr.agent.plist")
-				exec.Command("launchctl", "unload", plistPath).Run()
-				os.Remove(plistPath)
+				_ = exec.Command("launchctl", "unload", plistPath).Run()
+				_ = os.Remove(plistPath)
 				term.Green.Println("  ✓ tunr service removed")
 
 			default:
