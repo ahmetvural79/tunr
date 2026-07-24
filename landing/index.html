@@ -4,36 +4,42 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>tunr — Expose localhost to the internet</title>
+    <title>tunr — Deploy the apps your agent builds</title>
     <meta name="description"
-        content="Secure, instant tunnels for your local development server. Built for modern freelancers and vibecoders." />
-    <link rel="stylesheet" href="style.css" />
-    <link rel="icon" type="image/svg+xml" href="logo.svg" />
+        content="Deploy the apps your coding agent builds with one command — or one MCP call. They sleep when idle, wake on request, and share like a Google Doc. Instant tunnels included." />
+    <link rel="stylesheet" href="style.css?v=pivot7" />
+    <link rel="icon" type="image/svg+xml" href="logo.svg?v=7" />
+    <script>
+        // Apply saved/system theme before paint (no flash of wrong theme).
+        (function () {
+            try {
+                var t = localStorage.getItem('tunr-theme');
+                if (!t) t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+                if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+            } catch (e) {}
+        })();
+    </script>
 </head>
 
 <body>
+
+    <!-- Animated background: aurora blobs + moving grid -->
+    <div class="bg-fx" aria-hidden="true">
+        <span class="blob blob-1"></span>
+        <span class="blob blob-2"></span>
+        <span class="blob blob-3"></span>
+        <span class="ring ring-1"></span>
+        <span class="ring ring-2"></span>
+        <span class="ring ring-3"></span>
+    </div>
+    <div class="bg-grid" aria-hidden="true"></div>
 
     <!-- Sticky Navbar -->
     <div class="navbar-wrapper">
         <div class="container">
             <nav>
                 <a href="/" class="logo">
-                    <svg class="logo-icon" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <defs>
-                            <linearGradient id="nav-bg" x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stop-color="#7c3aed"/>
-                                <stop offset="100%" stop-color="#a855f7"/>
-                            </linearGradient>
-                        </defs>
-                        <rect x="32" y="32" width="448" height="448" rx="96" fill="url(#nav-bg)"/>
-                        <ellipse cx="256" cy="256" rx="176" ry="176" fill="none" stroke="white" stroke-width="2" opacity="0.12"/>
-                        <g transform="translate(256, 252)">
-                            <rect x="-96" y="-84" width="192" height="42" rx="8" fill="white"/>
-                            <rect x="-22" y="-84" width="44" height="200" rx="8" fill="white"/>
-                        </g>
-                        <path d="M360 360 L400 400 L360 440" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.6"/>
-                        <line x1="320" y1="400" x2="396" y2="400" stroke="white" stroke-width="12" stroke-linecap="round" opacity="0.6"/>
-                    </svg>
+                    <img class="logo-icon" src="logo.svg?v=7" alt="" width="30" height="30" />
                     tunr.sh
                 </a>
                 <div class="nav-links">
@@ -44,6 +50,10 @@
                     <a href="https://github.com/ahmetvural79/tunr" target="_blank" class="nav-item">GitHub</a>
                 </div>
                 <div class="nav-actions">
+                    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme" title="Toggle light / dark">
+                        <svg class="theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                        <svg class="theme-icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                    </button>
                     <a id="auth-cta" href="https://app.tunr.sh/login" class="btn btn-primary">Log in</a>
                 </div>
             </nav>
@@ -55,15 +65,15 @@
         <section class="hero container">
             <div class="hero-badge animate-in">
                 <div class="hero-badge-pulse"></div>
-                tunr v0.4.0 — UDP/TLS tunnels, Docker, multi-tunnel config, Prometheus metrics
+                New — close your laptop, your app keeps running · deploy in preview
             </div>
 
-            <h1 class="animate-in animate-in-delay-1">Expose your local server <br />in 3 seconds.</h1>
-            <p class="animate-in animate-in-delay-2">HTTPS, TCP, UDP & TLS tunnels, multi-region routing, SDKs, Docker, and zero configuration.</p>
+            <h1 class="animate-in animate-in-delay-1">Ship the apps <br />your agent builds.</h1>
+            <p class="animate-in animate-in-delay-2">Apps are born in Claude Code and Cursor — and die on localhost. tunr is where they live on: deploy with one command (or one MCP call from your agent), sleep when idle, wake on request, and share with a link and roles. The 3‑second tunnel is still here — now it's the on‑ramp.</p>
 
             <div class="hero-actions animate-in animate-in-delay-3">
-                <a href="#install" class="btn btn-primary btn-lg">Install CLI</a>
-                <a href="docs.html" class="btn btn-secondary btn-lg">Read the Docs</a>
+                <a href="#install" class="btn btn-primary btn-lg">Deploy your first app</a>
+                <a href="https://github.com/ahmetvural79/tunr" target="_blank" class="btn btn-secondary btn-lg">Star on GitHub</a>
             </div>
 
             <!-- Hero Terminal with Tabs -->
@@ -77,64 +87,42 @@
                     <div class="terminal-title">bash — tunr</div>
                 </div>
                 <div class="terminal-tabs">
-                    <button class="terminal-tab active" data-tab="sharing">Sharing</button>
-                    <button class="terminal-tab" data-tab="demo">Demo Mode</button>
-                    <button class="terminal-tab" data-tab="tcp">TCP Tunnels</button>
-                    <button class="terminal-tab" data-tab="udptls">UDP & TLS</button>
-                    <button class="terminal-tab" data-tab="inspect">Inspect</button>
+                    <button class="terminal-tab active" data-tab="deploy">Deploy</button>
+                    <button class="terminal-tab" data-tab="share">Share</button>
+                    <button class="terminal-tab" data-tab="agent">AI Agent</button>
+                    <button class="terminal-tab" data-tab="tunnel">Tunnel</button>
                 </div>
                 <div class="terminal-body">
-                    <div class="terminal-panel active" data-panel="sharing">
+                    <div class="terminal-panel active" data-panel="deploy">
+                        <span class="cmd-prompt">~</span> <span class="cmd-text">tunr deploy --name sprint</span><br /><br />
+                        <span class="cmd-dim">▲ Packing… 214 files (node_modules skipped)</span><br />
+                        <span class="cmd-dim">▲ Building (nixpacks · node 20 detected)</span><br />
+                        <span class="cmd-dim">▲ Health check: OK</span><br /><br />
+                        <span class="cmd-success">🚀</span> Live: <a href="#" class="cmd-url">https://sprint.tunr.sh</a> <span class="cmd-dim">(sleeps when idle, wakes on request)</span><br /><br />
+                        <span class="cmd-dim"># close your laptop — sprint.tunr.sh stays up.</span>
+                    </div>
+                    <div class="terminal-panel" data-panel="share">
+                        <span class="cmd-prompt">~</span> <span class="cmd-text">tunr share-app sprint</span><br /><br />
+                        <span class="cmd-dim">Share “sprint” like a document:</span><br />
+                        <span class="cmd-success">  ✓</span> Everyone at <span class="cmd-text">@acme.com</span> — Editor<br />
+                        <span class="cmd-success">  ✓</span> <span class="cmd-text">ali@client.com</span> — Viewer (read-only)<br /><br />
+                        <span class="cmd-dim">No auth code in your app.</span><br />
+                        Login, roles &amp; comments run at the <span class="cmd-url">edge</span>, not in your code.
+                    </div>
+                    <div class="terminal-panel" data-panel="agent">
+                        <span class="cmd-prompt">~</span> <span class="cmd-text">claude "ship this to tunr and share it with my team"</span><br /><br />
+                        <span class="cmd-info">→</span> <span class="cmd-text">deploy_app</span> <span class="cmd-success">200</span> <span class="cmd-dim">https://sprint.tunr.sh</span><br />
+                        <span class="cmd-info">→</span> <span class="cmd-text">set_share_policy</span> <span class="cmd-success">200</span> <span class="cmd-dim">@acme.com: editor</span><br />
+                        <span class="cmd-info">→</span> <span class="cmd-text">get_feedback</span> <span class="cmd-success">200</span> <span class="cmd-dim">2 comments pulled</span><br /><br />
+                        <span class="cmd-dim">Everything the dashboard does, your agent does over MCP.</span>
+                    </div>
+                    <div class="terminal-panel" data-panel="tunnel">
                         <span class="cmd-prompt">~</span> <span class="cmd-text">tunr share --port 3000</span><br /><br />
                         <span class="cmd-dim">Connecting to edge relay...</span><br />
-                        <span class="cmd-dim">Requesting wildcard certificate...</span><br /><br />
-                        <span class="cmd-success">✓</span> Tunnel established successfully<br /><br />
-                        Traffic to <a href="#" class="cmd-url">https://ax2b3.tunr.sh</a> is now forwarding to <span class="cmd-text">localhost:3000</span><br />
-                        <span class="cmd-dim">Hit Ctrl+C to quit.</span>
-                    </div>
-                    <div class="terminal-panel" data-panel="demo">
-                        <span class="cmd-prompt">~</span> <span class="cmd-text">tunr share -p 3000 --demo --freeze --inject-widget</span><br /><br />
-                        <span class="cmd-dim">Connecting to edge relay...</span><br />
                         <span class="cmd-success">✓</span> Tunnel established<br /><br />
-                        <span class="cmd-url">https://demo.tunr.sh</span> → localhost:3000<br /><br />
-                        <span class="cmd-dim">Proxy features active:</span><br />
-                        <span class="cmd-success">  ✓</span> Read-only demo mode (POST/PUT/DELETE blocked)<br />
-                        <span class="cmd-success">  ✓</span> Freeze cache enabled (crash protection)<br />
-                        <span class="cmd-success">  ✓</span> Feedback widget injected into HTML
-                    </div>
-                    <div class="terminal-panel" data-panel="inspect">
-                        <span class="cmd-prompt">~</span> <span class="cmd-text">tunr logs --follow</span><br /><br />
-                        <span class="cmd-dim">Streaming live request logs...</span><br /><br />
-                        <span class="cmd-info">→</span> <span class="cmd-text">GET</span> /api/products <span class="cmd-success">200</span> <span class="cmd-dim">12ms</span><br />
-                        <span class="cmd-info">→</span> <span class="cmd-text">POST</span> /api/orders <span class="cmd-success">201</span> <span class="cmd-dim">45ms</span><br />
-                        <span class="cmd-info">→</span> <span class="cmd-text">GET</span> /dashboard <span class="cmd-success">200</span> <span class="cmd-dim">8ms</span><br />
-                        <span class="cmd-info">→</span> <span class="cmd-text">DELETE</span> /api/users/42 <span style="color: var(--accent-orange);">403</span> <span class="cmd-dim">2ms (demo blocked)</span>
-                    </div>
-                    <div class="terminal-panel" data-panel="tcp">
-                        <span class="cmd-prompt">~</span> <span class="cmd-text">tunr tcp --port 5432 --region ams --qr</span><br /><br />
-                        <span class="cmd-dim">Connecting to edge relay...</span><br />
-                        <span class="cmd-success">✓</span> TCP tunnel established<br /><br />
-                        <span class="cmd-url">tcp://ams-db.tunr.sh:443</span> → localhost:5432<br /><br />
-                        <span class="cmd-dim">Proxy features active:</span><br />
-                        <span class="cmd-success">  ✓</span> Raw TCP forwarding (no HTTP parsing)<br />
-                        <span class="cmd-success">  ✓</span> Region: Amsterdam (ams)<br />
-                        <span class="cmd-success">  ✓</span> QR code generated<br /><br />
-                        <span class="cmd-dim">Connect with:</span><br />
-                        <span class="cmd-prompt">~</span> <span class="cmd-text">psql -h ams-db.tunr.sh -p 443 -U myuser mydb</span>
-                    </div>
-                    <div class="terminal-panel" data-panel="udptls">
-                        <span class="cmd-prompt">~</span> <span class="cmd-text">tunr udp --port 53 --region ams</span><br /><br />
-                        <span class="cmd-dim">Connecting to edge relay...</span><br />
-                        <span class="cmd-success">✓</span> UDP tunnel established<br /><br />
-                        <span class="cmd-url">udp://ams-dns.tunr.sh:443</span> → localhost:53<br /><br />
-                        <span class="cmd-dim">Proxy features active:</span><br />
-                        <span class="cmd-success">  ✓</span> Raw UDP datagram forwarding<br />
-                        <span class="cmd-success">  ✓</span> Region: Amsterdam (ams)<br /><br />
-                        <span class="cmd-prompt">~</span> <span class="cmd-text">tunr tls --port 8443</span><br /><br />
-                        <span class="cmd-dim">Connecting to edge relay...</span><br />
-                        <span class="cmd-success">✓</span> TLS tunnel established (end-to-end encrypted)<br /><br />
-                        <span class="cmd-url">tls://e2e.tunr.sh:443</span> → localhost:8443<br />
-                        <span class="cmd-success">  🔒</span> Zero-trust: relay cannot read your traffic
+                        <span class="cmd-url">https://ax2b3.tunr.sh</span> → <span class="cmd-text">localhost:3000</span><br /><br />
+                        <span class="cmd-dim">The 3-second tunnel that started it all — still free, still first-class.</span><br />
+                        <span class="cmd-dim">HTTPS · WebSocket · TCP · UDP · TLS · multi-region.</span>
                     </div>
                 </div>
             </div>
@@ -509,12 +497,32 @@
         </section>
 
         <!-- Pricing -->
+        <!-- Agent-native / MCP -->
+        <section id="mcp" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <p class="section-eyebrow">Agent-native</p>
+                    <h2 class="section-title-gradient" style="margin-top: 0;">Your agent's deploy button</h2>
+                    <p>tunr ships an <strong>MCP server</strong>, so Claude Code, Cursor and Windsurf can drive it directly.
+                        Everything you can do in the dashboard, your agent can do over MCP — deploy, share, read feedback, roll back.
+                        Docs are written for agents, not just humans.</p>
+                </div>
+                <div class="featured-command" style="max-width: 640px; margin: 0 auto;">
+                    <span class="featured-command-prefix">~</span> claude "ship this to tunr and share it with my team"
+                </div>
+                <p style="text-align: center; color: var(--text-dim); margin-top: 18px; font-size: 14px;">
+                    → <code>deploy_app</code> · <code>set_share_policy</code> · <code>get_feedback</code> · <code>rollback</code>
+                    &nbsp;—&nbsp; one control plane, three faces: dashboard, CLI, MCP.
+                </p>
+            </div>
+        </section>
+
         <section id="pricing" class="section section-surface">
             <div class="container">
                 <div class="section-header">
                     <p class="section-eyebrow">Pricing</p>
                     <h2 class="section-title-gradient" style="margin-top: 0;">Simple, transparent pricing</h2>
-                    <p>Start free. Upgrade when you need more.</p>
+                    <p>Tunnels are free forever. Deploy, host &amp; share small software — upgrade when you need more.</p>
                     <div class="billing-toggle" id="billing-toggle">
                         <button type="button" class="billing-toggle-btn is-active" data-cycle="monthly">Monthly</button>
                         <button type="button" class="billing-toggle-btn" data-cycle="yearly">Yearly</button>
@@ -533,7 +541,8 @@
                             </div>
                         </div>
                         <ul class="pricing-features">
-                            <li class="pricing-feature"><span class="pricing-check">✓</span> <span class="pricing-name-text">Tunnel duration</span> <span class="pricing-value">2 hours max</span></li>
+                            <li class="pricing-feature"><span class="pricing-check">✓</span> <span class="pricing-name-text">Deployed apps</span> <span class="pricing-value">3 · sleep when idle</span></li>
+                            <li class="pricing-feature"><span class="pricing-check">✓</span> <span class="pricing-name-text">Tunnels</span> <span class="pricing-value">Unlimited</span></li>
                             <li class="pricing-feature"><span class="pricing-check">✓</span> <span class="pricing-name-text">Concurrent tunnels</span> <span class="pricing-value">1</span></li>
                             <li class="pricing-feature"><span class="pricing-check">✓</span> <span class="pricing-name-text">Subdomains</span> <span class="pricing-value">Random only</span></li>
                             <li class="pricing-feature"><span class="pricing-check">✓</span> <span class="pricing-name-text">Password protection</span> <span class="pricing-value">Included</span></li>
@@ -549,13 +558,13 @@
                         <div class="pricing-header">
                             <span class="pricing-name">Pro</span>
                             <div class="pricing-price">
-                                <span id="pro-price-amount" class="pricing-amount">$5</span>
+                                <span id="pro-price-amount" class="pricing-amount">$9</span>
                                 <span id="pro-price-period" class="pricing-period">/mo</span>
                             </div>
                         </div>
                         <ul class="pricing-features">
-                            <li class="pricing-feature"><span class="pricing-check-pro">✓</span> <span class="pricing-name-text">Tunnel duration</span> <span class="pricing-value">Unlimited</span></li>
-                            <li class="pricing-feature"><span class="pricing-check-pro">✓</span> <span class="pricing-name-text">Concurrent tunnels</span> <span class="pricing-value">Up to 10</span></li>
+                            <li class="pricing-feature"><span class="pricing-check-pro">✓</span> <span class="pricing-name-text">Deployed apps</span> <span class="pricing-value">More · always-on option</span></li>
+                            <li class="pricing-feature"><span class="pricing-check-pro">✓</span> <span class="pricing-name-text">Custom domains for apps</span> <span class="pricing-value">Included</span></li>
                             <li class="pricing-feature"><span class="pricing-check-pro">✓</span> <span class="pricing-name-text">Reserved subdomains</span> <span class="pricing-value">Custom (myapp.tunr.sh)</span></li>
                             <li class="pricing-feature"><span class="pricing-check-pro">✓</span> <span class="pricing-name-text">Password protection</span> <span class="pricing-value">Included</span></li>
                             <li class="pricing-feature"><span class="pricing-check-pro">✓</span> <span class="pricing-name-text">Custom domains</span> <span class="pricing-value">Included</span></li>
@@ -637,6 +646,17 @@
 
     <script>
     (function() {
+        // Theme toggle — index.html doesn't load app.js, so wire it here.
+        var themeBtn = document.getElementById('theme-toggle');
+        if (themeBtn) {
+            themeBtn.addEventListener('click', function () {
+                var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+                if (isLight) { document.documentElement.removeAttribute('data-theme'); }
+                else { document.documentElement.setAttribute('data-theme', 'light'); }
+                try { localStorage.setItem('tunr-theme', isLight ? 'dark' : 'light'); } catch (e) {}
+            });
+        }
+
         // Terminal tab switching
         const tabs = document.querySelectorAll('.terminal-tab');
         const panels = document.querySelectorAll('.terminal-panel');
@@ -702,7 +722,7 @@
 
             function setCycle(cycle) {
                 var isYearly = cycle === 'yearly';
-                proAmount.textContent = isYearly ? '$49' : '$5';
+                proAmount.textContent = isYearly ? '$89' : '$9';
                 proPeriod.textContent = isYearly ? '/yr' : '/mo';
                 proUpgradeBtn.textContent = isYearly ? 'Upgrade to Pro Yearly' : 'Upgrade to Pro Monthly';
                 proUpgradeBtn.href = 'https://app.tunr.sh/dashboard/settings/billing?cycle=' + cycle;

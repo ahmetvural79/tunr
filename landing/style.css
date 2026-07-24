@@ -33,10 +33,12 @@
 
 html {
   scroll-behavior: smooth;
+  background-color: var(--bg);
+  transition: background-color 0.3s ease;
 }
 
 body {
-  background-color: var(--bg);
+  background-color: transparent;
   color: var(--text-primary);
   font-family: var(--font-sans);
   line-height: 1.6;
@@ -109,10 +111,11 @@ a {
   left: 0;
   right: 0;
   z-index: 100;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--nav-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
 
 nav {
@@ -136,7 +139,10 @@ nav {
   width: 28px;
   height: 28px;
   flex-shrink: 0;
+  /* mark ships navy; dark theme (default) knocks it out to white */
+  filter: brightness(0) invert(1);
 }
+[data-theme="light"] .logo-icon { filter: none; }
 
 .nav-links {
   display: flex;
@@ -262,7 +268,7 @@ nav {
   letter-spacing: -2px;
   line-height: 1.1;
   margin-bottom: 24px;
-  background: linear-gradient(135deg, #ffffff 30%, #a1a1aa 100%);
+  background: linear-gradient(135deg, var(--text-primary) 30%, var(--text-secondary) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -288,7 +294,7 @@ nav {
 .terminal-window {
   margin: 64px auto 0;
   max-width: 700px;
-  background: #09090b;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
@@ -385,6 +391,23 @@ nav {
 .cmd-success { color: var(--accent-green); font-weight: 600; text-shadow: 0 0 8px rgba(16, 185, 129, 0.4); }
 .cmd-url { color: var(--accent-cyan); text-decoration: underline; text-underline-offset: 4px; font-weight: 500; }
 .cmd-info { color: var(--accent-cyan); font-weight: 600; }
+
+/* Keep the hero terminal DARK in light mode too, so the code stays readable. */
+[data-theme="light"] .terminal-window {
+  background: #0e0e12;
+  border-color: #26262b;
+  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.35);
+}
+[data-theme="light"] .terminal-header,
+[data-theme="light"] .terminal-tabs {
+  background: #17171b;
+  border-color: #26262b;
+}
+[data-theme="light"] .terminal-body { color: #e4e4e7; }
+[data-theme="light"] .terminal-title,
+[data-theme="light"] .terminal-tab { color: #8b8b93; }
+[data-theme="light"] .terminal-tab.active { color: #f4f4f5; }
+[data-theme="light"] .cmd-dim { color: #8b8b93; }
 .cmd-comment { color: #71717a; }
 
 /* ── Sections ──────────────────────────────────── */
@@ -431,7 +454,7 @@ nav {
   font-weight: 800;
   letter-spacing: -1px;
   margin-bottom: 12px;
-  background: linear-gradient(135deg, #ffffff 30%, #a1a1aa 100%);
+  background: linear-gradient(135deg, var(--text-primary) 30%, var(--text-secondary) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -474,24 +497,25 @@ nav {
 }
 
 .featured-command {
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid var(--border);
+  background: #0d0d12; /* terminal look — same in light & dark, always readable */
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   padding: 16px 24px;
   font-family: var(--font-mono);
   font-size: 15px;
-  color: var(--text-primary);
+  color: #4ade80; /* terminal green */
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
   max-width: 500px;
   justify-content: center;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
 .featured-command-prefix {
-  color: var(--text-dim);
+  color: #22c55e;
+  opacity: 0.7;
 }
 
 /* ── Features Grid ─────────────────────────────── */
@@ -553,13 +577,13 @@ nav {
 }
 
 .code-snippet {
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid var(--border);
+  background: #0d0d12; /* terminal look — readable in light & dark */
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
   padding: 12px 16px;
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--text-primary);
+  color: #4ade80; /* terminal green */
   display: flex;
   align-items: center;
   gap: 12px;
@@ -567,7 +591,8 @@ nav {
 
 .code-snippet::before {
   content: '$';
-  color: var(--text-dim);
+  color: #22c55e;
+  opacity: 0.7;
 }
 
 /* ── Pricing ────────────────────────────────────── */
@@ -778,7 +803,7 @@ nav {
 }
 
 .command-terminal {
-  background: #09090b;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px;
@@ -810,7 +835,7 @@ nav {
 
 .command-card {
   padding: 16px;
-  background: #09090b;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
@@ -1029,3 +1054,166 @@ footer {
     grid-template-columns: 1fr;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Theming (dark / light) + animated background
+   ══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* extra theme tokens (dark defaults) */
+  --nav-bg: rgba(9, 9, 11, 0.66);
+  --grid-line: rgba(255, 255, 255, 0.028);
+  --blob-1: rgba(139, 92, 246, 0.45);
+  --blob-2: rgba(34, 211, 238, 0.32);
+  --blob-3: rgba(236, 72, 153, 0.24);
+  --fx-opacity: 0.4;
+}
+
+[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-surface: #f7f7f8;
+  --bg-elevated: #ececed;
+  --bg-card: #ffffff;
+  --border: #e6e6e9;
+  --border-hover: #d4d4d8;
+
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-dim: #8a8a93;
+
+  --accent-glow: rgba(139, 92, 246, 0.26);
+
+  --nav-bg: rgba(255, 255, 255, 0.72);
+  --grid-line: rgba(24, 24, 27, 0.045);
+  --blob-1: rgba(139, 92, 246, 0.22);
+  --blob-2: rgba(34, 211, 238, 0.16);
+  --blob-3: rgba(236, 72, 153, 0.13);
+  --fx-opacity: 0.32;
+}
+
+/* Animated background: aurora blobs + subtle moving grid.
+   Sits behind everything (html paints the base color; body is transparent). */
+.bg-fx {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: var(--fx-opacity);
+}
+
+.bg-fx .blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  will-change: transform;
+}
+
+.bg-fx .blob-1 {
+  width: 46vw; height: 46vw;
+  background: var(--blob-1);
+  top: -12vw; left: -8vw;
+  animation: drift1 26s ease-in-out infinite alternate;
+}
+
+.bg-fx .blob-2 {
+  width: 40vw; height: 40vw;
+  background: var(--blob-2);
+  top: 6vw; right: -10vw;
+  animation: drift2 32s ease-in-out infinite alternate;
+}
+
+.bg-fx .blob-3 {
+  width: 34vw; height: 34vw;
+  background: var(--blob-3);
+  bottom: -14vw; left: 34vw;
+  animation: drift3 38s ease-in-out infinite alternate;
+}
+
+.bg-grid {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 55% at 50% 0%, #000 0%, transparent 72%);
+  mask-image: radial-gradient(ellipse 80% 55% at 50% 0%, #000 0%, transparent 72%);
+  animation: gridPan 60s linear infinite;
+}
+
+@keyframes drift1 {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(6vw, 4vw, 0) scale(1.12); }
+}
+@keyframes drift2 {
+  from { transform: translate3d(0, 0, 0) scale(1.05); }
+  to   { transform: translate3d(-5vw, 6vw, 0) scale(0.95); }
+}
+@keyframes drift3 {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(4vw, -5vw, 0) scale(1.1); }
+}
+@keyframes gridPan {
+  from { background-position: 0 0, 0 0; }
+  to   { background-position: 46px 46px, 46px 46px; }
+}
+
+/* Broadcast rings — data opening out to the world (signal from a node). */
+.bg-fx .ring {
+  position: absolute;
+  left: 50%;
+  top: 30vh;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: ringPulse 7.5s ease-out infinite;
+}
+.bg-fx .ring-2 { animation-delay: 2.5s; }
+.bg-fx .ring-3 { animation-delay: 5s; }
+
+@keyframes ringPulse {
+  0%   { transform: scale(0.4); opacity: 0; }
+  8%   { opacity: 0.22; }
+  70%  { opacity: 0.03; }
+  100% { transform: scale(28); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-fx .blob, .bg-fx .ring, .bg-grid { animation: none !important; }
+  .bg-fx .ring { display: none; }
+  html { transition: none; }
+}
+
+/* Theme toggle button (in nav) */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  transition: all 0.2s ease;
+  margin-right: 6px;
+}
+.theme-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+/* Icon visibility is driven purely by the html[data-theme] attribute (no JS needed). */
+.theme-toggle svg { display: block; width: 16px; height: 16px; }
+.theme-icon-light { display: none; }
+[data-theme="light"] .theme-icon-dark { display: none; }
+[data-theme="light"] .theme-icon-light { display: block; }
