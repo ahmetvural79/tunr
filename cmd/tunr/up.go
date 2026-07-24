@@ -20,7 +20,7 @@ type TunnelDef struct {
 	Port      int    `json:"port"`
 	Protocol  string `json:"protocol,omitempty"`  // http, tcp, udp, tls
 	Subdomain string `json:"subdomain,omitempty"` // Pro
-	Domain    string `json:"domain,omitempty"`     // Pro
+	Domain    string `json:"domain,omitempty"`    // Pro
 	Password  string `json:"password,omitempty"`
 	Demo      bool   `json:"demo,omitempty"`
 	Freeze    bool   `json:"freeze,omitempty"`

@@ -126,7 +126,7 @@ Pinggy-Inspired Security & Debugging:
 				PathRoutes:    parsedRoutes,
 				AllowedIPs:    allowedIPs,
 				BearerToken:   bearerToken,
-				QREnabled:    qrCode,
+				QREnabled:     qrCode,
 				XForwardedFor: xForwardedFor,
 				OriginalURL:   originalURL,
 				CorsOrigins:   corsOrigins,

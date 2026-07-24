@@ -240,7 +240,7 @@ func TestIPWhitelist_XForwardedFor(t *testing.T) {
 
 	// Real client is in XFF — should use it
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.RemoteAddr = "1.2.3.4:12345" // spoofed remote addr
+	req.RemoteAddr = "1.2.3.4:12345"              // spoofed remote addr
 	req.Header.Set("X-Forwarded-For", "10.5.5.5") // real client
 	rr := httptest.NewRecorder()
 	wrapped.ServeHTTP(rr, req)

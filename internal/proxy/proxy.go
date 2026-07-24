@@ -36,13 +36,13 @@ type LocalProxy struct {
 	Password string // Basic Auth credentials
 
 	// Pinggy-Inspired Features
-	IPWhitelist    *IPWhitelist
-	BearerToken    string
-	HeaderRules    []HeaderModification
-	QREnabled      bool
-	XForwardedFor  bool
-	OriginalURL    bool
-	CorsOrigins    []string
+	IPWhitelist   *IPWhitelist
+	BearerToken   string
+	HeaderRules   []HeaderModification
+	QREnabled     bool
+	XForwardedFor bool
+	OriginalURL   bool
+	CorsOrigins   []string
 
 	// Traffic stats for the curious
 	mu           sync.RWMutex
@@ -247,6 +247,7 @@ func (p *LocalProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 //  7. Password (Basic)   — HTTP Basic Authentication
 //  8. Demo Mode          — block destructive HTTP methods
 //  9. Freeze Cache       — serve cached responses on crash
+//
 // 10. Widget Inject      — inject feedback UI into HTML
 // 11. Reverse Proxy      — forward to local dev server
 func (p *LocalProxy) BuildMiddlewareChain() {

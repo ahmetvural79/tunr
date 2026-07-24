@@ -18,10 +18,10 @@ import (
 
 // PaddlePlanConfig maps Paddle prices/products to internal plan names.
 type PaddlePlanConfig struct {
-	ProPriceID     string
-	TeamPriceID    string
-	ProProductID   string
-	TeamProductID  string
+	ProPriceID      string
+	TeamPriceID     string
+	ProProductID    string
+	TeamProductID   string
 	DefaultPaidPlan string
 }
 
