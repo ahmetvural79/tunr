@@ -3,14 +3,14 @@
 <br/>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-wordmark.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="assets/logo-wordmark.svg" />
-  <img src="assets/logo-wordmark.svg" alt="tunr" width="340" />
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-wordmark-dark.png" />
+  <source media="(prefers-color-scheme: light)" srcset="assets/logo-wordmark-light.png" />
+  <img src="assets/logo-wordmark-light.png" alt="tunr" width="200" />
 </picture>
 
 <br/><br/>
 
-**The cloud for small software** — deploy, host & share the apps your agent builds. Instant tunnels included.
+**Deploy the apps your agent builds** — host and share them on tunr's infrastructure, with instant localhost tunnels included.
 
 [![Release](https://img.shields.io/github/v/release/ahmetvural79/tunr?color=7c3aed)](https://github.com/ahmetvural79/tunr/releases)
 [![License: PolyForm Shield](https://img.shields.io/badge/License-PolyForm%20Shield%201.0.0-7c3aed.svg)](LICENSE)
@@ -34,7 +34,7 @@ $ tunr share --port 3000
 
 ## What is tunr?
 
-**tunr is the cloud for small software** — the personal and internal tools people now build with coding agents (Claude Code, Cursor). Deploy an app with one command — or one **MCP call from your agent** — and it runs on tunr's infrastructure: it sleeps when idle, wakes on request, and keeps running after you close your laptop. Soon, apps become shareable like a Google Doc: login, viewer/editor roles and comments enforced at the edge, so your app never contains a line of auth code.
+**tunr runs the small apps you build with coding agents** (Claude Code, Cursor) — the personal utilities, internal tools and one-off dashboards that used to die on `localhost`. Deploy one with a single command — or one **MCP call from your agent** — and it runs on tunr's infrastructure: it sleeps when idle, wakes on request, and keeps serving after you close your laptop. Soon, apps become shareable like a Google Doc: login, viewer/editor roles and comments enforced at the edge, so your app never contains a line of auth code.
 
 The **3-second tunnel** that tunr started as is still here — free and first-class — now it's the on-ramp: `tunr share --port 3000` gives any localhost an instant public HTTPS URL (HTTP/WebSocket, TCP, UDP, TLS; multi-region), a developer-first alternative to ngrok and Cloudflare Tunnel, shipped as a single static Go binary (macOS, Linux, Windows — ARM64 included).
 
