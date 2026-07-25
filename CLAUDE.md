@@ -100,6 +100,10 @@ Env knobs: `TUNR_IDLE_SLEEP`, `TUNR_IDLE_STOP`, `TUNR_METRICS_TOKEN` (relay); `T
 
 ### Multi-node readiness (Çok-node planı Faz A)
 
+> Operational runbook for adding/removing capacity: **`docs/SCALING.md`** — trigger
+> metrics, split order (Builder → Data → Worker → Edge), sizing, and the checklist.
+> (`docs/` is gitignored, so that file lives locally and is rsync'd by `update.sh`.)
+
 Still one box — these exist so growing the cluster is a config change rather than a refactor.
 
 - **`relay/internal/relay/scheduler.go`** — `RUNNER_URL` is no longer reachable as a bare string. Every wake/sleep/stop/status call goes through `NodeClient` + `Scheduler.Pick(app)`, which today always returns the same node. **Add new lifecycle calls through the scheduler, never against `RunnerClient` directly.** Compile-time assertions at the bottom of the file enforce the boundary.
