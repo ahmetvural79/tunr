@@ -136,8 +136,27 @@ if [[ "$MODE" == "full" || "$MODE" == "relay" ]]; then
       echo '  creating network $APPS_NETWORK (icc=false)'
       docker network create --opt com.docker.network.bridge.enable_icc=false '$APPS_NETWORK' >/dev/null
     fi
+    # The runner compose file is version-controlled now (it carries the host
+    # cgroup/proc mounts the density levers need). Sync it, keeping a timestamped
+    # backup of whatever was there — the server copy may have local edits.
+    if [ -f '$SRC_DIR/docker-compose.runner.yml' ]; then
+      if [ -f docker-compose.runner.yml ] && ! cmp -s '$SRC_DIR/docker-compose.runner.yml' docker-compose.runner.yml; then
+        cp docker-compose.runner.yml \"docker-compose.runner.yml.bak.\$(date +%Y%m%d-%H%M%S)\"
+        echo '  backed up existing docker-compose.runner.yml'
+      fi
+      cp '$SRC_DIR/docker-compose.runner.yml' docker-compose.runner.yml
+    fi
     if [ -f docker-compose.runner.yml ]; then
-      docker compose $DC_BASE -f docker-compose.runner.yml up -d runner >/dev/null 2>&1 && echo '  runner sidecar up' || echo '  [warn] runner up failed'
+      docker compose $DC_BASE -f docker-compose.runner.yml up -d --build runner >/dev/null 2>&1 && echo '  runner sidecar up' || echo '  [warn] runner up failed'
+      # Faz 1 levers are silent when they fail — surface the runner's verdict.
+      sleep 2
+      if docker logs tunr-runner 2>&1 | tail -30 | grep -q 'cgroup levers ON'; then
+        echo '  density levers: ON'
+      else
+        echo '  [warn] density levers OFF — sleeping apps keep their full RSS.'
+        echo '  [warn]   check: docker logs tunr-runner | head -20'
+        echo '  [warn]   host prerequisite: bash $SRC_DIR/scripts/host-density.sh'
+      fi
     else
       echo '  [warn] docker-compose.runner.yml missing — deploy pipeline offline'
     fi

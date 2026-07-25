@@ -1,0 +1,83 @@
+# tunr-runner — the Docker-driving sidecar.
+#
+# Compose add-on, layered onto docker-compose.yml under the same project name:
+#   docker compose -f docker-compose.yml -f docker-compose.runner.yml up -d runner
+#
+# Paths are relative to the compose directory (/opt/tunr on the production box),
+# where ./src is the rsync'd repo checkout — see update.sh.
+#
+# The runner is the only component that touches Docker. It builds app images and
+# drives the app lifecycle (run / wake / sleep+reclaim / stop), which is why it
+# holds the socket and the relay does not.
+#
+# ── Why the host mounts matter ────────────────────────────────────────────────
+# The density levers (Yoğunluk planı Faz 1) are cgroup v2 operations performed on
+# the APP containers' cgroups, from inside this container:
+#
+#   /sys/fs/cgroup  rw   memory.reclaim (reclaim-on-pause — the WARM state),
+#                        memory.high / memory.min (QoS), per-app PSI reads.
+#                        Read-only is not enough: reclaim and QoS are writes.
+#   /proc           ro   host PSI (/proc/pressure/*) and meminfo, which feed the
+#                        sweeper's safety valve. PSI is not namespaced, so the
+#                        bind mount gives host-wide values without pid: host.
+#
+# Note there is deliberately NO `pid: host`. The cgroup path resolver prefers
+# /proc/<pid>/cgroup when a PID namespace is shared, but falls back to the
+# standard Docker layout — and this host uses the systemd cgroup driver, whose
+# layout resolves fine. Sharing the host PID namespace would be a privilege
+# increase bought for nothing.
+#
+# Without these mounts the runner still works — it logs "cgroup levers OFF" at
+# startup and every sleeping app keeps its full resident set, i.e. pre-Faz-1
+# capacity. Check the startup log after any change here.
+#
+# Host prerequisite: scripts/host-density.sh. Reclaim needs zram to exist, and
+# memory.high without swap is actively harmful — it escalates to a system-wide
+# OOM instead of throttling the one cgroup responsible.
+
+name: tunr
+
+services:
+  runner:
+    build:
+      context: ./src/relay
+      dockerfile: cmd/runner/Dockerfile
+    container_name: tunr-runner
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TUNR_DOCKER_RUNTIME: runsc
+      # Host procfs, mounted below. /sys/fs/cgroup keeps its default path
+      # because the hierarchy is bind-mounted at the same location it has
+      # on the host.
+      TUNR_PROC_ROOT: /host/proc
+      # Concurrent builds. Three keeps the deploy queue short; the SCHED_IDLE
+      # build slice is what stops them costing wake latency.
+      TUNR_BUILD_SLOTS: "3"
+      # all | agent | builder. Splitting builds onto their own machine later
+      # means running a second container with role=builder — not a rewrite.
+      TUNR_RUNNER_ROLE: all
+      # CPU feature baseline for gVisor sandboxes, so snapshots stay restorable
+      # across nodes. DISABLED: verified on runsc release-20260721.0 that an
+      # unsupported value makes sandbox creation fail outright ("cannot read
+      # client sync file"), i.e. it breaks every deploy. It buys nothing until
+      # checkpoint/restore (Faz 2). Confirm the accepted syntax against the
+      # deployed runsc build before setting it, and treat the value as frozen
+      # once snapshots exist. See relay/internal/runner/cpubaseline.go.
+      TUNR_CPU_BASELINE: ""
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - /proc:/host/proc:ro
+    networks:
+      - default
+      - apps
+    # The control plane must outlive its tenants under memory pressure: app
+    # containers get oom_score_adj=500 from the driver, this pushes the other way.
+    oom_score_adj: -500
+
+networks:
+  apps:
+    name: tunr-apps
+    external: true

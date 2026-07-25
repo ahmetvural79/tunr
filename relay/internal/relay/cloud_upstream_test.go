@@ -144,3 +144,90 @@ func TestRouteStore_SetLookupDelete(t *testing.T) {
 		t.Fatal("route still present after Delete")
 	}
 }
+
+// A route reload must not discard an upstream's live state. The route loader
+// rebuilds a CloudUpstream from the DB every 60s; if SetCloud swapped the object
+// in, the app would reset to "awake" while its container is actually paused —
+// and the next request would be proxied into a frozen process and hang.
+func TestSetCloudPreservesLiveStateAcrossReload(t *testing.T) {
+	store := NewRouteStore()
+	target, _ := url.Parse("http://172.20.0.5:8080")
+
+	first := NewCloudUpstream("a_1", target, []byte("secret"), nil, nil)
+	store.SetCloud("app", first)
+
+	// The app goes to sleep and picks up an open streaming connection.
+	first.SetSleepState(SleepWarm)
+	first.pins.Add(1)
+	first.touch()
+
+	// A route reload builds a brand-new object from the same DB row.
+	reloaded := NewCloudUpstream("a_1", mustURL(t, "http://172.20.0.5:8080"), []byte("secret"), nil, nil)
+	store.SetCloud("app", reloaded)
+
+	got, ok := store.LookupCloud("app")
+	if !ok {
+		t.Fatal("route disappeared after reload")
+	}
+	if got != first {
+		t.Fatal("upstream object was replaced instead of updated in place")
+	}
+	if got.SleepState() != SleepWarm {
+		t.Errorf("state = %v after reload, want SleepWarm", got.SleepState())
+	}
+	if !got.Pinned() {
+		t.Error("pin lost across reload — the sweeper could freeze a streaming app")
+	}
+	if got.LastSeen().IsZero() {
+		t.Error("lastSeen reset across reload — idle clock restarted")
+	}
+}
+
+// A changed address in the routes table must still be applied.
+func TestSetCloudAppliesNewTarget(t *testing.T) {
+	store := NewRouteStore()
+	first := NewCloudUpstream("a_1", mustURL(t, "http://172.20.0.5:8080"), []byte("s"), nil, nil)
+	store.SetCloud("app", first)
+	first.SetSleepState(SleepWarm)
+
+	store.SetCloud("app", NewCloudUpstream("a_1", mustURL(t, "http://172.20.0.9:8080"), []byte("s2"), nil, nil))
+
+	got, _ := store.LookupCloud("app")
+	got.targetMu.RLock()
+	host := got.Target.Host
+	got.targetMu.RUnlock()
+	if host != "172.20.0.9:8080" {
+		t.Fatalf("target = %s, want the reloaded address", host)
+	}
+	if got.SleepState() != SleepWarm {
+		t.Error("state should survive an address change — the app is still asleep")
+	}
+}
+
+// A different app on the same subdomain is a genuine replacement.
+func TestSetCloudReplacesOnDifferentApp(t *testing.T) {
+	store := NewRouteStore()
+	first := NewCloudUpstream("a_old", mustURL(t, "http://172.20.0.5:8080"), []byte("s"), nil, nil)
+	store.SetCloud("app", first)
+	first.SetSleepState(SleepWarm)
+
+	next := NewCloudUpstream("a_new", mustURL(t, "http://172.20.0.6:8080"), []byte("s"), nil, nil)
+	store.SetCloud("app", next)
+
+	got, _ := store.LookupCloud("app")
+	if got != next {
+		t.Fatal("a different app should replace the upstream outright")
+	}
+	if got.SleepState() != SleepAwake {
+		t.Errorf("new app state = %v, want SleepAwake", got.SleepState())
+	}
+}
+
+func mustURL(t *testing.T, s string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
+}

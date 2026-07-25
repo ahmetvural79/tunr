@@ -22,6 +22,7 @@ type RouteLoader struct {
 	store  *RouteStore
 	waker  Waker
 	freeze FreezeCache
+	cache  *RouteCache
 }
 
 // NewRouteLoader wires a loader. waker/freeze may be nil (freeze arrives Faz 1).
@@ -29,14 +30,30 @@ func NewRouteLoader(database *db.DB, store *RouteStore, waker Waker, freeze Free
 	return &RouteLoader{db: database, store: store, waker: waker, freeze: freeze}
 }
 
+// WithCache enables the on-disk route mirror, so the relay can serve existing
+// apps through a Postgres outage. See route_cache.go for why this matters.
+func (l *RouteLoader) WithCache(c *RouteCache) *RouteLoader {
+	l.cache = c
+	return l
+}
+
 // Start does an initial load, then runs the LISTEN loop + reconcile poll.
 func (l *RouteLoader) Start(ctx context.Context) {
-	if l.db == nil || l.store == nil {
+	if l.store == nil {
+		return
+	}
+	if l.db == nil {
 		logger.Info("route loader: no DB — cloud routes disabled (tunnel path unaffected)")
 		return
 	}
 	if err := l.reloadAll(ctx); err != nil {
+		// The data plane does not depend on Postgres. If the initial load
+		// fails, fall back to the local mirror so already-deployed apps keep
+		// serving; only control-plane work (new deploys, route changes) stalls.
 		logger.Warn("route loader initial load failed: %v", err)
+		if n := l.cache.LoadInto(l.apply); n == 0 {
+			logger.Warn("route loader: no local cache either — cloud apps will 404 until Postgres returns")
+		}
 	}
 	go l.listenLoop(ctx)
 	go l.pollLoop(ctx)
@@ -79,6 +96,14 @@ func (l *RouteLoader) reloadAll(ctx context.Context) error {
 	for _, sub := range stale {
 		l.store.Delete(sub)
 	}
+
+	// Mirror the authoritative set locally. Only ever written after a SUCCESSFUL
+	// full read — caching a partial result would let a future boot serve a
+	// confidently incomplete route table.
+	if err := l.cache.Save(routes); err != nil {
+		logger.Warn("route cache save failed: %v (degrade mode will use the previous copy)", err)
+	}
+
 	logger.Info("route loader: %d cloud route(s) active", len(routes))
 	return nil
 }

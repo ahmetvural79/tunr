@@ -24,12 +24,18 @@ type App struct {
 }
 
 // CloudRoute is a resolved subdomain -> cloud upstream row (routes JOIN apps).
+//
+// The JSON tags are load-bearing, not decoration: this struct is persisted to
+// the relay's local route cache (relay/internal/relay/route_cache.go), which is
+// what lets already-deployed apps keep serving through a Postgres outage.
+// Renaming a field without keeping its tag would silently invalidate every
+// cached route on the next boot — exactly when the cache is needed.
 type CloudRoute struct {
-	Subdomain   string
-	AppID       string
-	CloudURL    string
-	WakeTimeout int
-	EdgeSecret  string
+	Subdomain   string `json:"subdomain"`
+	AppID       string `json:"app_id"`
+	CloudURL    string `json:"cloud_url"`
+	WakeTimeout int    `json:"wake_timeout"`
+	EdgeSecret  string `json:"edge_secret"`
 }
 
 // CreateApp inserts a new app. user_id must be a UUID.

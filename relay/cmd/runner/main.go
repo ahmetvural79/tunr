@@ -31,6 +31,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -50,8 +52,40 @@ var (
 	secret  = flag.String("secret", os.Getenv("RUNNER_SECRET"), "bearer auth shared secret")
 	runtime = flag.String("runtime", envOr("TUNR_DOCKER_RUNTIME", "runsc"), "docker runtime for app containers")
 
-	drv     *runner.DockerDriver
-	buildMu sync.Mutex // one build at a time (v0)
+	// cgroupRoot / procRoot let the runner see the HOST hierarchy. The runner is
+	// a container, so density levers (memory.reclaim, memory.high, PSI) only work
+	// if /sys/fs/cgroup and /proc are bind-mounted in. Both degrade to no-ops.
+	cgroupRoot = flag.String("cgroup-root", envOr("TUNR_CGROUP_ROOT", "/sys/fs/cgroup"), "cgroup v2 hierarchy root")
+	procRoot   = flag.String("proc-root", envOr("TUNR_PROC_ROOT", "/proc"), "proc filesystem root (host proc for PSI)")
+
+	// buildSlots caps concurrent builds. The old `buildMu` serialised them, so
+	// the tenth person to deploy waited for nine full builds; three slots plus
+	// the SCHED_IDLE build slice keeps the queue short without letting builds
+	// starve wake latency.
+	buildSlots = flag.Int("build-slots", envIntOr("TUNR_BUILD_SLOTS", 3), "max concurrent builds")
+
+	// role separates the two jobs this process does today. They have opposite
+	// resource profiles — building is CPU/NVMe-bursty and touches no live
+	// traffic; running is RAM-heavy and latency-sensitive — which is why the
+	// multi-node plan splits BUILDER off first: it's the noisiest component and
+	// the least critical, so separating it is the best return for the risk.
+	//
+	// Deliberately a flag rather than two binaries. Same image, one process per
+	// role, so moving builds to their own machine is a compose change instead
+	// of a refactor. The boundary is real and enforced from today: an agent-only
+	// runner rejects /v1/deploy outright.
+	role = flag.String("role", envOr("TUNR_RUNNER_ROLE", "all"), "all | agent | builder")
+
+	// cpuBaseline pins the CPU feature set gVisor exposes to sandboxes, so
+	// snapshots stay restorable on other nodes. "off" disables it.
+	// WARNING: changing this after checkpoint/restore ships invalidates every
+	// existing snapshot — see internal/runner/cpubaseline.go.
+	cpuBaseline = flag.String("cpu-baseline", envOr("TUNR_CPU_BASELINE", runner.DefaultCPUBaseline),
+		"CPU feature baseline for gVisor sandboxes (e.g. x86-64-v2, or 'off')")
+
+	drv    *runner.DockerDriver
+	slice  *runner.BuildSlice
+	builds *buildGate
 )
 
 func envOr(k, d string) string {
@@ -59,6 +93,79 @@ func envOr(k, d string) string {
 		return v
 	}
 	return d
+}
+
+func envIntOr(k string, d int) int {
+	if v := os.Getenv(k); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return d
+}
+
+// ---------- build admission ----------
+
+// buildGate is a counting semaphore that also records how long builds waited.
+// The queue-wait p95 is the metric the multi-node plan uses to decide when a
+// separate BUILDER node is worth adding, so it has to be observable from day one.
+type buildGate struct {
+	slots chan struct{}
+
+	mu       sync.Mutex
+	waits    []time.Duration // rolling window of recent waits
+	admitted int64
+}
+
+func newBuildGate(n int) *buildGate {
+	return &buildGate{slots: make(chan struct{}, n)}
+}
+
+// acquire blocks until a slot frees up, returning how long it waited and a
+// release func. A cancelled context aborts the wait.
+func (g *buildGate) acquire(ctx context.Context) (time.Duration, func(), error) {
+	start := time.Now()
+	select {
+	case g.slots <- struct{}{}:
+	case <-ctx.Done():
+		return time.Since(start), func() {}, ctx.Err()
+	}
+	waited := time.Since(start)
+
+	g.mu.Lock()
+	g.admitted++
+	g.waits = append(g.waits, waited)
+	if len(g.waits) > 200 { // bounded window — this is a gauge, not an audit log
+		g.waits = g.waits[len(g.waits)-200:]
+	}
+	g.mu.Unlock()
+
+	var once sync.Once
+	return waited, func() { once.Do(func() { <-g.slots }) }, nil
+}
+
+// stats reports queue depth and wait percentiles for /v1/stats.
+func (g *buildGate) stats() map[string]any {
+	g.mu.Lock()
+	w := append([]time.Duration(nil), g.waits...)
+	admitted := g.admitted
+	g.mu.Unlock()
+
+	sort.Slice(w, func(i, j int) bool { return w[i] < w[j] })
+	pct := func(p float64) float64 {
+		if len(w) == 0 {
+			return 0
+		}
+		i := int(p * float64(len(w)-1))
+		return w[i].Seconds()
+	}
+	return map[string]any{
+		"slots":          cap(g.slots),
+		"in_flight":      len(g.slots),
+		"admitted_total": admitted,
+		"queue_wait_p50": pct(0.50),
+		"queue_wait_p95": pct(0.95),
+	}
 }
 
 // DeployMeta is the JSON side of the /v1/deploy multipart upload.
@@ -79,18 +186,148 @@ func main() {
 	if *secret == "" {
 		log.Fatal("RUNNER_SECRET / -secret is required")
 	}
+	cg := runner.NewCgroups(*cgroupRoot, *procRoot)
 	drv = runner.NewDockerDriver()
 	drv.Runtime = *runtime
+	drv.Cgroups = cg
+	drv.CPUBaseline = *cpuBaseline
 
-	go pruneLoop() // periodic build-cache reclamation
+	// Density levers are optional but their absence is silent and expensive, so
+	// say so loudly at startup: an operator seeing "OFF" knows the box is running
+	// at pre-Faz-1 capacity and what to fix.
+	if err := cg.Available(); err != nil {
+		log.Printf("[warn] cgroup levers OFF: %v", err)
+		log.Printf("[warn]   → sleeping apps keep their full RSS; memory.high/min and PSI telemetry unavailable")
+	} else {
+		host := cg.HostStats()
+		log.Printf("cgroup levers ON (root=%s)", *cgroupRoot)
+		if host.SwapTotalBytes == 0 {
+			log.Printf("[warn] no swap configured — reclaim-on-pause has nowhere to put pages.")
+			log.Printf("[warn]   → run scripts/host-density.sh to set up zram (Faz 1 prerequisite)")
+		} else {
+			log.Printf("swap: %d MB total, %d MB free", host.SwapTotalBytes>>20, host.SwapFreeBytes>>20)
+		}
+	}
+
+	switch *role {
+	case "all", "agent", "builder":
+	default:
+		log.Fatalf("invalid -role %q (want all | agent | builder)", *role)
+	}
+	buildsEnabled := *role == "all" || *role == "builder"
+	agentEnabled := *role == "all" || *role == "agent"
+
+	if buildsEnabled {
+		builds = newBuildGate(*buildSlots)
+		slice = runner.NewBuildSlice(cg, runner.DefaultBuildSlice)
+		if err := slice.Ensure(context.Background()); err != nil {
+			log.Printf("[warn] %s", slice.Describe())
+		} else {
+			log.Printf("%s", slice.Describe())
+		}
+		go pruneLoop() // periodic build-cache reclamation
+	} else {
+		// Still constructed so /v1/stats and streamCmd have something valid to
+		// talk to; zero slots is unreachable because /v1/deploy isn't mounted.
+		builds = newBuildGate(1)
+		slice = runner.NewBuildSlice(cg, runner.DefaultBuildSlice)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprintln(w, "ok") })
-	mux.HandleFunc("/v1/deploy", auth(handleDeploy))
-	mux.HandleFunc("/v1/apps/", auth(handleApp)) // wake/sleep/stop/status/delete by path
+	if buildsEnabled {
+		mux.HandleFunc("/v1/deploy", auth(handleDeploy))
+	}
+	if agentEnabled {
+		mux.HandleFunc("/v1/apps/", auth(handleApp)) // wake/sleep/stop/status/delete by path
+	}
+	// /v1/host is the cheap sample the relay's sweeper polls every tick;
+	// /v1/stats is the full per-app picture for dashboards and capacity review.
+	mux.HandleFunc("/v1/host", auth(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, cg.HostStats())
+	}))
+	mux.HandleFunc("/v1/stats", auth(handleStats(cg)))
 
-	log.Printf("tunr-runner listening on %s (runtime=%s)", *listen, *runtime)
+	log.Printf("tunr-runner listening on %s (role=%s, runtime=%s, build-slots=%d, cpu-baseline=%s)",
+		*listen, *role, *runtime, *buildSlots, drv.CPUBaseline)
 	log.Fatal(http.ListenAndServe(*listen, mux))
+}
+
+// ---------- telemetry (Faz 0) ----------
+
+// handleStats is the observability endpoint the whole density programme rests
+// on: you cannot safely oversubscribe what you haven't measured. It reports the
+// host's memory/PSI picture plus a per-app cgroup sample, which together answer
+// "how many apps are hot, what do they really cost, and is the box stalling?".
+func handleStats(cg *runner.Cgroups) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+
+		host := cg.HostStats()
+		ratio := host.ZramRatio()
+		out := map[string]any{
+			"host":       host,
+			"zram_ratio": ratio,
+			"builds":     builds.stats(),
+		}
+
+		apps := map[string]any{}
+		ids, err := drv.List(ctx)
+		if err != nil {
+			out["apps_error"] = err.Error()
+		}
+		var residentTotal, realTotal, swapTotal uint64
+		for _, id := range ids {
+			st, err := drv.Stats(ctx, id)
+			if err != nil {
+				apps[id] = map[string]string{"error": err.Error()}
+				continue
+			}
+			status, _ := drv.Status(ctx, id)
+			apps[id] = map[string]any{
+				"status": string(status),
+				// resident_bytes is memory.current: RAM held directly. It
+				// already excludes swapped-out pages.
+				"resident_bytes": st.CurrentBytes,
+				"anon_bytes":     st.AnonBytes,
+				"file_bytes":     st.FileBytes,
+				// swap_bytes is the UNCOMPRESSED size of what moved to zram.
+				"swap_bytes": st.SwapBytes,
+				// real_bytes is what this app actually costs the host:
+				// resident + its swapped pages at their compressed size.
+				"real_bytes":      st.RealBytes(ratio),
+				"mem_pressure":    st.MemPressure,
+				"cpu_pressure":    st.CPUPressure,
+				"oom_kill_events": st.OOMKillEvents,
+				"high_events":     st.HighEvents,
+			}
+			residentTotal += st.CurrentBytes
+			swapTotal += st.SwapBytes
+			realTotal += st.RealBytes(ratio)
+		}
+		out["apps"] = apps
+		// The headline density numbers. "uncompressed" is what the app
+		// population would cost without zram; "real" is what it costs with it.
+		uncompressed := residentTotal + swapTotal
+		out["totals"] = map[string]any{
+			"app_count":              len(ids),
+			"resident_bytes":         residentTotal,
+			"swapped_bytes":          swapTotal,
+			"uncompressed_bytes":     uncompressed,
+			"real_bytes":             realTotal,
+			"reclaim_saving_percent": pctSaved(uncompressed, realTotal),
+		}
+		writeJSON(w, out)
+	}
+}
+
+// pctSaved reports how much of the would-be footprint zram gave back.
+func pctSaved(uncompressed, real uint64) float64 {
+	if uncompressed == 0 {
+		return 0
+	}
+	return (1 - float64(real)/float64(uncompressed)) * 100
 }
 
 // pruneLoop periodically reclaims Docker build cache + dangling images. Nixpacks
@@ -150,11 +387,20 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer src.Close()
 
-	if !buildMu.TryLock() {
-		sse.event("queued", "waiting for build slot")
-		buildMu.Lock()
+	// Admission: up to build-slots builds run at once. Anything beyond that
+	// queues, and the wait is both reported to the user (so a slow deploy is
+	// explained rather than mysterious) and recorded for the queue-wait metric.
+	gateCtx, gateCancel := context.WithTimeout(r.Context(), buildTimeout)
+	waited, release, err := builds.acquire(gateCtx)
+	gateCancel()
+	if err != nil {
+		sse.fail("build queue wait cancelled: " + err.Error())
+		return
 	}
-	defer buildMu.Unlock()
+	defer release()
+	if waited > time.Second {
+		sse.event("queued", fmt.Sprintf("waited %.0fs for a build slot", waited.Seconds()))
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), buildTimeout)
 	defer cancel()
@@ -212,6 +458,9 @@ func build(ctx context.Context, dir, imageRef string, noCache bool, sse *sseWrit
 	if noCache {
 		args = append(args, "--no-cache")
 	}
+	// nixpacks shells out to `docker build` itself, so --cgroup-parent can't be
+	// threaded through. Adopting the nixpacks process into the build slice at
+	// least deprioritises its own (substantial) plan-generation work.
 	return streamCmd(ctx, sse, "nixpacks", args...)
 }
 
@@ -220,6 +469,9 @@ func dockerBuild(ctx context.Context, dir, imageRef string, noCache bool, sse *s
 	if noCache {
 		args = append(args, "--no-cache")
 	}
+	// Put the build's RUN steps in the SCHED_IDLE slice so compiling never
+	// outbids an app trying to wake.
+	args = append(args, slice.DockerArgs()...)
 	return streamCmd(ctx, sse, "docker", append(args, dir)...)
 }
 
@@ -301,6 +553,13 @@ func streamCmd(ctx context.Context, sse *sseWriter, name string, args ...string)
 	cmd.Stderr = cmd.Stdout
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
+	}
+	// Deprioritise the build helper itself. Only reaches work this process does
+	// locally — Docker daemon work is covered by --cgroup-parent instead.
+	if slice.Active() && cmd.Process != nil {
+		if err := slice.Adopt(cmd.Process.Pid); err != nil {
+			log.Printf("[warn] build slice adopt %s: %v", name, err)
+		}
 	}
 	sc := bufio.NewScanner(out)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)

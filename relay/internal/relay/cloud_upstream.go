@@ -47,6 +47,22 @@ type FreezeCache interface {
 	Store(r *http.Request, status int, header http.Header, body []byte)
 }
 
+// SleepState mirrors the lifecycle state the sweeper last drove the app into.
+// The relay tracks it because the wake path differs per state — and because a
+// paused container still completes a TCP handshake in the kernel, so probing
+// alone can never tell us the app is frozen.
+type SleepState int32
+
+const (
+	// SleepAwake — HOT: serving normally.
+	SleepAwake SleepState = iota
+	// SleepWarm — paused + pages reclaimed into zram. Resume is a decompress.
+	SleepWarm
+	// SleepStopped — container exited. Waking is a full cold boot, and the
+	// container's IP changes, so the target has to be re-pointed.
+	SleepStopped
+)
+
 // CloudUpstream reverse-proxies a subdomain to a persistent app, waking it on demand.
 type CloudUpstream struct {
 	AppID       string
@@ -55,21 +71,32 @@ type CloudUpstream struct {
 	WakeTimeout time.Duration // total budget for probe+wake, e.g. 30s
 	Waker       Waker
 	Freeze      FreezeCache // optional (Faz 1)
+	Metrics     *WakeMetrics
 
 	initOnce sync.Once
 	proxy    *httputil.ReverseProxy
 	targetMu sync.RWMutex // guards Target.Host, which can move across a cold restart
-	// lastSeen feeds the idle sweeper (reads it to Sleep/Stop apps).
+	// lastSeen feeds the idle sweeper (reads it to Sleep/Stop apps). Only
+	// ActivityNormal/ActivityPin requests update it — see activity.go.
 	lastSeenMu sync.Mutex
 	lastSeen   time.Time
-	// sleeping is set by the idle sweeper when it pauses/stops the app; the next
-	// request then wakes it BEFORE probing (a paused container still completes the
-	// TCP handshake in the kernel, so probing alone would never trigger a wake).
-	sleeping atomic.Bool
+	// state is the sweeper's last known lifecycle state for this app.
+	state atomic.Int32
+	// pins counts open long-lived connections (WebSocket/SSE). While non-zero
+	// the sweeper must not put the app to sleep: freezing a container mid-stream
+	// hangs every attached client.
+	pins atomic.Int64
 }
 
-// SetSleeping marks whether the app has been paused/stopped by the sweeper.
-func (u *CloudUpstream) SetSleeping(v bool) { u.sleeping.Store(v) }
+// SetSleepState records the exact state the sweeper drove the app into.
+func (u *CloudUpstream) SetSleepState(s SleepState) { u.state.Store(int32(s)) }
+
+// SleepState reports the app's last known lifecycle state.
+func (u *CloudUpstream) SleepState() SleepState { return SleepState(u.state.Load()) }
+
+// Pinned reports whether a long-lived connection is currently open. The sweeper
+// skips pinned apps entirely.
+func (u *CloudUpstream) Pinned() bool { return u.pins.Load() > 0 }
 
 // NewCloudUpstream builds a CloudUpstream with a 30s default wake budget.
 func NewCloudUpstream(appID string, target *url.URL, secret []byte, wake Waker, freeze FreezeCache) *CloudUpstream {
@@ -125,7 +152,34 @@ func signEdge(secret []byte, ts, host, path string) string {
 // ServeHTTP: ensure target is dialable (waking it if needed), then proxy once.
 func (u *CloudUpstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	u.initOnce.Do(u.init)
-	u.touch()
+
+	class := ClassifyActivity(r)
+
+	// A monitor polling a sleeping app is answered here, at the edge. Waking a
+	// container so it can say "ok" to a robot every 30s is how scale-to-zero
+	// silently stops working (plan §1.2 / E6).
+	if class == ActivityProbe && u.SleepState() != SleepAwake {
+		u.Metrics.ObserveProbe()
+		writeSyntheticHealth(w, u.AppID)
+		return
+	}
+
+	// Probes never reset the idle clock, even when the app is already awake —
+	// otherwise a 30s monitor keeps a 45s idle threshold permanently out of reach.
+	if class != ActivityProbe {
+		u.touch()
+	}
+
+	// A pin forbids sleep for as long as the connection is open. Held across the
+	// whole proxy call, which for a WebSocket is the lifetime of the socket.
+	if class == ActivityPin {
+		u.pins.Add(1)
+		u.Metrics.PinDelta(1)
+		defer func() {
+			u.pins.Add(-1)
+			u.Metrics.PinDelta(-1)
+		}()
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), u.WakeTimeout)
 	defer cancel()
@@ -145,7 +199,30 @@ func (u *CloudUpstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // ensureDialable probes TCP; on failure asks the Waker once, then keeps
 // probing with backoff until the budget runs out.
+//
+// It also times the whole path and attributes it to the state the app was in,
+// because an unattributed "wake p95" is useless: a 20 ms unpause and a 3 s cold
+// boot are the same event to a timer but completely different products.
 func (u *CloudUpstream) ensureDialable(ctx context.Context) error {
+	start := time.Now()
+	prior := u.SleepState()
+
+	// Attribute the sample to where the app started, not where it ended up.
+	source := WakeFromProbe
+	switch prior {
+	case SleepWarm:
+		source = WakeFromWarm
+	case SleepStopped:
+		source = WakeFromCold
+	}
+	recorded := false
+	record := func(ok bool) {
+		if !recorded {
+			u.Metrics.Observe(source, time.Since(start), ok)
+			recorded = true
+		}
+	}
+
 	probe := func() error {
 		u.targetMu.RLock()
 		addr := u.Target.Host
@@ -160,7 +237,7 @@ func (u *CloudUpstream) ensureDialable(ctx context.Context) error {
 	// If the sweeper paused/stopped this app, wake it first — a paused container
 	// still completes the TCP handshake in the kernel, so probe success alone
 	// would never trigger a wake and the request would hang on the frozen process.
-	if u.sleeping.Load() && u.Waker != nil {
+	if prior != SleepAwake && u.Waker != nil {
 		wctx, wcancel := context.WithTimeout(ctx, 12*time.Second)
 		if ip, err := u.Waker.Wake(wctx, u.AppID); err != nil {
 			logger.Warn("cloud pre-wake %s: %v", u.AppID, err)
@@ -168,13 +245,19 @@ func (u *CloudUpstream) ensureDialable(ctx context.Context) error {
 			u.updateHost(ip)
 		}
 		wcancel()
-		u.sleeping.Store(false)
+		u.SetSleepState(SleepAwake)
 	}
 
 	if probe() == nil {
+		record(true)
 		return nil
 	}
 	if u.Waker != nil {
+		// The dial failed while we believed the app was up — it died, or was
+		// stopped out from under us. Either way this is a cold path now.
+		if prior == SleepAwake {
+			source = WakeFromCold
+		}
 		wctx, wcancel := context.WithTimeout(ctx, 10*time.Second)
 		if ip, err := u.Waker.Wake(wctx, u.AppID); err != nil {
 			// Log but keep probing — the unit may still be coming up.
@@ -188,10 +271,12 @@ func (u *CloudUpstream) ensureDialable(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
+			record(false)
 			return fmt.Errorf("wake budget exceeded for %s", u.AppID)
 		case <-time.After(backoff):
 		}
 		if probe() == nil {
+			record(true)
 			return nil
 		}
 		if backoff < 2*time.Second {
@@ -239,18 +324,120 @@ func (u *CloudUpstream) LastSeen() time.Time {
 // the route loader (Postgres load + LISTEN/NOTIFY). The tunnel path (in-memory
 // Registry) is resolved first; this store is the fallback for kind='cloud'.
 type RouteStore struct {
-	mu     sync.RWMutex
-	clouds map[string]*CloudUpstream // key: subdomain
+	mu      sync.RWMutex
+	clouds  map[string]*CloudUpstream // key: subdomain
+	metrics *WakeMetrics              // injected into every upstream the store adopts
 }
 
 // NewRouteStore returns an empty store.
 func NewRouteStore() *RouteStore { return &RouteStore{clouds: map[string]*CloudUpstream{}} }
 
-// SetCloud installs (or replaces) the upstream for a subdomain.
+// SetMetrics attaches a collector to the store. Upstreams are created by the
+// route loader, which has no reason to know about telemetry, so the store wires
+// it in on the way past — both for routes already present and for later ones.
+func (s *RouteStore) SetMetrics(m *WakeMetrics) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.metrics = m
+	for _, up := range s.clouds {
+		up.Metrics = m
+	}
+}
+
+// Metrics returns the store's collector (nil if telemetry is off).
+func (s *RouteStore) Metrics() *WakeMetrics {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.metrics
+}
+
+// SetCloud installs the upstream for a subdomain.
+//
+// If an upstream for the same app is already present it is updated IN PLACE
+// rather than replaced. This matters more than it looks: the route loader
+// re-reads the routes table every 60 seconds and builds a fresh CloudUpstream
+// each time. Swapping the object in would silently discard all of its live
+// state —
+//
+//	state    → the app resets to "awake" while its container is actually
+//	           paused. The next request is then proxied into a frozen process
+//	           and hangs until the response timeout instead of waking it, and
+//	           the sweeper keeps re-issuing pause on an already-paused container.
+//	pins     → an app with an open WebSocket/SSE connection looks unpinned, so
+//	           the sweeper is free to freeze it mid-stream.
+//	lastSeen → the idle clock resets, hiding genuinely idle apps from the sweeper.
+//
+// None of that state belongs to the route row; it belongs to the running app.
+// So the row updates the object's configuration and leaves its liveness alone.
 func (s *RouteStore) SetCloud(subdomain string, up *CloudUpstream) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if up.Metrics == nil {
+		up.Metrics = s.metrics
+	}
+	if prev, ok := s.clouds[subdomain]; ok && prev != up && prev.AppID == up.AppID {
+		prev.updateConfig(up)
+		return
+	}
 	s.clouds[subdomain] = up
+}
+
+// updateConfig copies configuration from a freshly-loaded route row onto a live
+// upstream, preserving everything runtime (state, pins, lastSeen, proxy).
+func (u *CloudUpstream) updateConfig(next *CloudUpstream) {
+	u.targetMu.Lock()
+	// Only re-point at the row's address if it actually changed. A wake may
+	// have already corrected the target to the container's real IP, and the
+	// DB row can lag behind that.
+	if u.Target.String() != next.Target.String() {
+		*u.Target = *next.Target
+	}
+	u.targetMu.Unlock()
+
+	u.EdgeSecret = next.EdgeSecret
+	if next.WakeTimeout > 0 {
+		u.WakeTimeout = next.WakeTimeout
+	}
+	if next.Freeze != nil {
+		u.Freeze = next.Freeze
+	}
+	if next.Waker != nil {
+		u.Waker = next.Waker
+	}
+}
+
+// Snapshot renders per-app relay-side state for the stats endpoint. This is the
+// relay's half of the density picture (what it believes each app's state is);
+// the runner's /v1/stats supplies the other half (what each app actually costs).
+func (s *RouteStore) Snapshot() map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	byState := map[string]int{"hot": 0, "warm": 0, "stopped": 0}
+	apps := make(map[string]any, len(s.clouds))
+	for sub, up := range s.clouds {
+		var state string
+		switch up.SleepState() {
+		case SleepWarm:
+			state = "warm"
+		case SleepStopped:
+			state = "stopped"
+		default:
+			state = "hot"
+		}
+		byState[state]++
+		var idleSec float64
+		if last := up.LastSeen(); !last.IsZero() {
+			idleSec = time.Since(last).Seconds()
+		}
+		apps[sub] = map[string]any{
+			"app_id":   up.AppID,
+			"state":    state,
+			"pinned":   up.Pinned(),
+			"idle_sec": idleSec,
+		}
+	}
+	return map[string]any{"total": len(s.clouds), "by_state": byState, "apps": apps}
 }
 
 // Delete removes a subdomain's route.

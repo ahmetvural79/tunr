@@ -74,11 +74,53 @@ func main() {
 	routeStore := relay.NewRouteStore()
 	proxy.SetRoutes(routeStore)
 	runnerClient := relay.NewRunnerClient(cfg.RunnerURL, cfg.RunnerSecret) // HTTP client to the tunr-runner sidecar (relay stays Docker-free)
-	relay.NewRouteLoader(database, routeStore, runnerClient, nil).Start(ctx)
-	// Scale-to-zero: pause idle apps at 5m (RAM resident, instant resume), cold-stop
-	// at 2h (frees RAM). Wake returns the container's current IP, so a cold start
-	// that reassigns the IP is handled — CloudUpstream re-targets on wake.
-	relay.StartIdleSweeper(ctx, routeStore, runnerClient, 5*time.Minute, 2*time.Hour)
+
+	// ── Çok-node Faz A: placement goes through an interface, not a string ──
+	// One node today, so Pick() always returns the same client and behaviour is
+	// unchanged. The value is that every wake/sleep/stop call site already
+	// routes through the scheduler — adding worker #2 becomes a nodes-table row
+	// rather than an edit to every caller.
+	scheduler := relay.NewSingleNodeScheduler(
+		getEnv("TUNR_NODE_ID", "n_local_01"),
+		getEnv("TUNR_NODE_REGION", "ams"),
+		cfg.RunnerURL,
+		getEnv("TUNR_CPU_BASELINE", "x86-64-v2"),
+		runnerClient,
+	)
+
+	// Faz 0: wake latency + activity telemetry. Every density lever in the plan
+	// is judged against these numbers, so they're wired before the levers are.
+	wakeMetrics := relay.NewWakeMetrics()
+	routeStore.SetMetrics(wakeMetrics)
+	// Faz A degrade mode: mirror the route table locally so a Postgres outage
+	// can't take down apps that are running perfectly well. Control-plane work
+	// (deploys, route changes) correctly stalls; the data plane does not.
+	routeCache := relay.NewRouteCache(getEnv("TUNR_ROUTE_CACHE", "/var/lib/tunr/routes.json"))
+	relay.NewRouteLoader(database, routeStore, scheduler, nil).WithCache(routeCache).Start(ctx)
+
+	// Correct our beliefs against the nodes before serving. Upstreams are built
+	// as "awake", but containers may be paused from before this restart — and a
+	// paused container still answers a TCP handshake, so probing can't detect
+	// it. Without this, the first request to such an app hangs on a frozen
+	// process instead of waking it. Backgrounded: it must not delay listening.
+	go scheduler.ReconcileStates(ctx, routeStore)
+
+	// Scale-to-zero (Faz 1). HOT→WARM at 45s: sleep is now nearly free (the
+	// runner reclaims a paused app's pages into zram), so holding an idle app
+	// hot for minutes buys nothing. WARM→STOPPED at 20m frees RAM entirely;
+	// wake returns the container's current IP, so the CloudUpstream re-targets.
+	// Thresholds are env-tunable because the right values depend on the box.
+	sweepCfg := relay.DefaultSweeperConfig()
+	sweepCfg.IdleSleep = getEnvDuration("TUNR_IDLE_SLEEP", sweepCfg.IdleSleep)
+	sweepCfg.IdleStop = getEnvDuration("TUNR_IDLE_STOP", sweepCfg.IdleStop)
+	relay.StartIdleSweeper(ctx, routeStore, scheduler, scheduler, sweepCfg)
+	logger.Info("scale-to-zero: warm after %s, stop after %s (aggressive above %.0f%% mem pressure)",
+		sweepCfg.IdleSleep, sweepCfg.IdleStop, sweepCfg.MemPressureThreshold)
+
+	// Faz A: build the capacity history that the "when do we add a node?"
+	// thresholds will be read against. Nobody consumes it yet — that's the
+	// point, the data has to predate the decision.
+	relay.StartNodeReporter(ctx, database, scheduler, routeStore, relay.DefaultNodeReporterConfig())
 
 	// HTTP sunucusu
 	mux := http.NewServeMux()
@@ -99,6 +141,15 @@ func main() {
 	mux.HandleFunc("/api/v1/status", handleStatus(registry))
 	mux.HandleFunc("/api/v1/health", handleHealth())
 	userAPI.RegisterRoutes(mux)
+
+	// ── Faz 0: capacity telemetry (/api/v1/density) ──
+	// Off unless TUNR_METRICS_TOKEN is set — it exposes the app inventory and
+	// host health, so it must not be reachable by default.
+	density := relay.NewDensityAPI(routeStore, scheduler, getEnv("TUNR_METRICS_TOKEN", ""))
+	density.RegisterRoutes(mux)
+	if density.Enabled() {
+		logger.Info("density telemetry enabled: /api/v1/density (bearer token)")
+	}
 
 	// ── Pivot Faz 0: control plane (/v1/apps) ──
 	// App yaratma + cloud route seed'leme (deploy pipeline sonraki aşama).
@@ -365,6 +416,22 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getEnvDuration parses a Go duration string ("45s", "20m"). An unparseable
+// value keeps the default rather than failing the boot — a typo in an idle
+// threshold should not take the relay down.
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		logger.Warn("%s=%q is not a valid duration — using %s", key, v, fallback)
+		return fallback
+	}
+	return d
 }
 
 // clientIP — auth rate limiting için en iyi-çaba client IP tespiti.
