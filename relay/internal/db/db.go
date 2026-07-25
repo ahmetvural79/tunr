@@ -45,10 +45,26 @@ func New(ctx context.Context, dsn string) (*DB, error) {
 		return nil, fmt.Errorf("DB pool oluşturulamadı: %w", err)
 	}
 
-	// Bağlantıyı test et
+	// Bağlantıyı test et.
+	//
+	// Ping BAŞARISIZ olsa bile havuzu KAPATMIYORUZ. pgxpool zaten kendi kendine
+	// yeniden bağlanır; havuzu atmak, geçici bir erişilemezliği kalıcı bir arızaya
+	// çeviriyordu:
+	//
+	//   Sunucu yeniden başladığında Docker, restart policy'leri `depends_on`
+	//   sırasını GÖZETMEDEN uyguluyor. Relay, Postgres'ten birkaç saniye önce
+	//   ayağa kalkıyor → ping başarısız → havuz kapatılıyor → relay kalıcı olarak
+	//   in-memory moda düşüyor → bütün cloud route'lar 404. Postgres 5 saniye
+	//   sonra sağlıklı hale gelse bile relay elle yeniden başlatılana kadar
+	//   kendini toparlayamıyordu.
+	//
+	// Artık havuz açık kalıyor: çağıran taraf bunu "henüz erişilemiyor" olarak
+	// loglar, route loader yerel cache'ten servis etmeye devam eder ve periyodik
+	// reconcile Postgres döndüğü anda kendiliğinden başarılı olur.
+	//
+	// Dönen DB non-nil, error non-nil — çağıran, bunu ölümcül saymamalı.
 	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("DB ping başarısız: %w", err)
+		return &DB{pool: pool}, fmt.Errorf("DB'ye şu an erişilemiyor (havuz açık, otomatik yeniden bağlanacak): %w", err)
 	}
 
 	return &DB{pool: pool}, nil

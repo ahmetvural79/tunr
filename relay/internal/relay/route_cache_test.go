@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -191,5 +192,35 @@ func TestRouteCacheSaveReplaces(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Subdomain != "only" {
 		t.Fatalf("got %+v, want just the second write", got)
+	}
+}
+
+// The degrade path must work when there is NO database pool at all, not just
+// when a query fails. This is the case a host reboot produces — Docker restart
+// policies ignore depends_on ordering, so the relay can come up before Postgres
+// and would otherwise serve 404 for every cloud app until manually restarted.
+func TestRouteLoaderServesFromCacheWithoutDB(t *testing.T) {
+	cache := NewRouteCache(filepath.Join(t.TempDir(), "routes.json"))
+	if err := cache.Save(sampleRoutes()); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewRouteStore()
+	NewRouteLoader(nil, store, nil, nil).WithCache(cache).Start(context.Background())
+
+	if _, ok := store.LookupCloud("alpha"); !ok {
+		t.Fatal("alpha not served from cache with a nil DB")
+	}
+	if _, ok := store.LookupCloud("beta"); !ok {
+		t.Fatal("beta not served from cache with a nil DB")
+	}
+}
+
+// With no DB and no cache, the loader must be a quiet no-op rather than a panic.
+func TestRouteLoaderNoDBNoCache(t *testing.T) {
+	store := NewRouteStore()
+	NewRouteLoader(nil, store, nil, nil).Start(context.Background())
+	if store.Snapshot()["total"].(int) != 0 {
+		t.Fatal("expected an empty store")
 	}
 }

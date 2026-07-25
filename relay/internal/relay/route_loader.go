@@ -43,7 +43,12 @@ func (l *RouteLoader) Start(ctx context.Context) {
 		return
 	}
 	if l.db == nil {
-		logger.Info("route loader: no DB — cloud routes disabled (tunnel path unaffected)")
+		// No pool at all. Still serve whatever the last good sync produced —
+		// running apps do not stop being reachable because the control plane's
+		// database is gone.
+		if n := l.cache.LoadInto(l.apply); n == 0 {
+			logger.Info("route loader: no DB — cloud routes disabled (tunnel path unaffected)")
+		}
 		return
 	}
 	if err := l.reloadAll(ctx); err != nil {

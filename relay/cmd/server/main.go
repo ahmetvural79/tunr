@@ -44,12 +44,22 @@ func main() {
 	if cfg.DatabaseURL != "" {
 		var err error
 		database, err = db.New(ctx, cfg.DatabaseURL)
-		if err != nil {
-			// DB olmadan da çalışabiliriz (in-memory mod)
-			logger.Warn("DB bağlantısı kurulamadı: %v (in-memory modda devam)", err)
-		} else {
+		switch {
+		case database != nil && err != nil:
+			// Havuz açık ama Postgres şu an erişilemiyor — tipik olarak host
+			// yeniden başladıktan sonra relay'in Postgres'ten önce ayağa
+			// kalkması. In-memory moda DÜŞMÜYORUZ: havuz kendiliğinden yeniden
+			// bağlanır, bu arada route loader yerel cache'ten servis eder.
+			defer database.Close()
+			logger.Warn("PostgreSQL şu an erişilemiyor: %v", err)
+			logger.Warn("  → mevcut app'ler yerel route cache'ten servis edilir; "+
+				"yeni deploy'lar Postgres dönene kadar bekler")
+		case database != nil:
 			defer database.Close()
 			logger.Info("PostgreSQL bağlantısı kuruldu")
+		default:
+			// Havuz hiç kurulamadı (bozuk DSN gibi) — gerçekten in-memory mod.
+			logger.Warn("DB havuzu kurulamadı: %v (in-memory modda devam)", err)
 		}
 	} else {
 		logger.Warn("DATABASE_URL ayarlanmamış — in-memory mod (persistent değil)")
