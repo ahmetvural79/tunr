@@ -55,17 +55,19 @@ _build/
 # The following are NOT part of the open source CLI.
 # They live in private repositories.
 
-# Internal documentation (kept locally, not published to GitHub)
-docs/
+# NOTE: docs/, scripts/ and relay/migrations/ used to be ignored here as
+# "internal". They are now tracked — the schema history, the host-provisioning
+# scripts and the operational runbooks are things you cannot rebuild from
+# memory after a lost laptop, and keeping them out of version control was a
+# bigger risk than publishing them. They contain no credentials (verified);
+# every secret still lives in server-side .env files, which stay ignored below.
 
-# Relay server (proprietary infrastructure)
-relay/migrations/
+# Relay server binary (build artefact)
 relay/server
 
 # Freemium / internal — keep locally, do not publish
 .tunr.schema.json
 CODEOWNERS
-scripts/
 
 # Dashboard + landing page (proprietary — not published to GitHub)
 landing/
