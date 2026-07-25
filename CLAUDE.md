@@ -102,7 +102,6 @@ Env knobs: `TUNR_IDLE_SLEEP`, `TUNR_IDLE_STOP`, `TUNR_METRICS_TOKEN` (relay); `T
 
 > Operational runbook for adding/removing capacity: **`docs/SCALING.md`** — trigger
 > metrics, split order (Builder → Data → Worker → Edge), sizing, and the checklist.
-> (`docs/` is gitignored, so that file lives locally and is rsync'd by `update.sh`.)
 
 Still one box — these exist so growing the cluster is a config change rather than a refactor.
 
@@ -128,4 +127,5 @@ The wire protocol between CLI and relay is the typed message stream in `internal
 - **Versioning** — `cmd/tunr/main.go` injects `Version` into `internal/tunnel` via its `init()`. The `-ldflags "-X main.Version=..."` in the Makefile is how releases get their version string; both CLI and SDK package versions (`sdk/python/pyproject.toml`, `sdk/node/package.json`) currently track `v0.4.0`.
 - **Some doc comments are in Turkish** (notably `relay/cmd/server/main.go` and the JSON schema). This is intentional — preserve the language when editing those files unless the user asks for a translation.
 - **Tests near the CLI exercise CLI flag parsing**; tests under `internal/proxy/` use a real loopback HTTP server. There's a mock relay at `scripts/e2e/mock_relay.go` for end-to-end shell scripts (`scripts/full_*.sh`).
+- **`docs/`, `scripts/` and `relay/migrations/` are tracked** (as of b2d7305). Secrets live only in server-side `.env` files, which stay ignored — keep it that way. `landing/` (proprietary dashboard) remains ignored.
 - **License is PolyForm Shield 1.0.0** — contributions are accepted but the license forbids building a competing tunnel service. Keep this in mind when proposing scope changes.
