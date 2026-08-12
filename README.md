@@ -18,7 +18,7 @@ One command — or one MCP call — and the thing Claude Code just wrote stops l
 [![Relay: PolyForm Shield](https://img.shields.io/badge/relay-PolyForm%20Shield-6b7280.svg)](relay/LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00add8)](go.mod)
 
-[tunr.sh](https://tunr.sh) · [Docs](https://tunr.sh/docs) · [Dashboard](https://app.tunr.sh)
+[tunr.sh](https://tunr.sh) · [Docs](https://tunr.sh/docs.html) · [Dashboard](https://app.tunr.sh)
 
 </div>
 
