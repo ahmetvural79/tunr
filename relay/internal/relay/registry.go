@@ -448,7 +448,7 @@ func (e *TunnelEntry) WriteTCPDataToBrowser(streamID string, payload []byte) err
 		return fmt.Errorf("unknown tcp stream %s", streamID)
 	}
 	// Use binary message for raw data
-	c.SetWriteDeadline(time.Now().Add(30 * time.Second))
+	_ = c.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	return c.WriteMessage(websocket.BinaryMessage, payload)
 }
 

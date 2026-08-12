@@ -52,12 +52,12 @@ TCP tunnels forward raw bytes — no HTTP parsing on the relay side.`,
 			mgr.SetAuthToken(token)
 
 			opts := tunnel.StartOptions{
-				Protocol:     tunnel.ProtocolTCP,
-				Region:       region,
-				AuthToken:    token,
-				AllowedIPs:   allowedIPs,
-				QREnabled:   qrCode,
-				HTTPS:        cfg.Tunnel.TLSVerify,
+				Protocol:   tunnel.ProtocolTCP,
+				Region:     region,
+				AuthToken:  token,
+				AllowedIPs: allowedIPs,
+				QREnabled:  qrCode,
+				HTTPS:      cfg.Tunnel.TLSVerify,
 			}
 
 			logger.Info("Starting TCP tunnel (port %d)...", port)

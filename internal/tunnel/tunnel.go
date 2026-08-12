@@ -473,16 +473,16 @@ type StartOptions struct {
 	InjectWidget bool
 	AutoLogin    string
 
-	Password        string
-	TTL             time.Duration
-	PathRoutes      map[string]int
-	AllowedIPs      []string         // IP whitelist (CIDR notation)
-	HeaderRules     []HeaderRule     // Live header modification rules
-	BearerToken     string           // Bearer token access control
-	QREnabled       bool             // Show QR code in terminal
-	XForwardedFor   bool             // Inject X-Forwarded-For header
-	OriginalURL     bool             // Inject X-Original-URL header
-	CorsOrigins     []string         // CORS preflight allowed origins
+	Password      string
+	TTL           time.Duration
+	PathRoutes    map[string]int
+	AllowedIPs    []string     // IP whitelist (CIDR notation)
+	HeaderRules   []HeaderRule // Live header modification rules
+	BearerToken   string       // Bearer token access control
+	QREnabled     bool         // Show QR code in terminal
+	XForwardedFor bool         // Inject X-Forwarded-For header
+	OriginalURL   bool         // Inject X-Original-URL header
+	CorsOrigins   []string     // CORS preflight allowed origins
 }
 
 // validatePort makes sure you're not asking for something silly

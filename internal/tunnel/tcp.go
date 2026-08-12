@@ -17,7 +17,6 @@ import (
 // tcpStream tracks a single TCP session forwarded between relay ↔ local-service.
 type tcpStream struct {
 	conn   net.Conn
-	w      *net.Conn
 	cancel context.CancelFunc
 }
 
@@ -71,7 +70,7 @@ func (tc *TCPRelayConn) RunTCPLoop(ctx context.Context, localPort int) error {
 				tc.streamsMu.Unlock()
 				if s != nil {
 					raw, _ := base64.StdEncoding.DecodeString(d.PayloadB64)
-					s.conn.Write(raw)
+					_, _ = s.conn.Write(raw)
 				}
 
 			case MsgTypeTCPClose:
@@ -222,7 +221,10 @@ func ConnectRelayTCP(ctx context.Context, relayURL, token string, port int, subd
 	}
 
 	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
-	conn, _, err := dialer.DialContext(ctx, wsURL, headers)
+	conn, resp, err := dialer.DialContext(ctx, wsURL, headers)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("WS dial failed: %w", err)
 	}
