@@ -62,3 +62,73 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: "dist/**"
+
+  # ── SDK yayını ────────────────────────────────────────────────────────────
+  #
+  # Bunlar release job'ından ayrı: binary release'i başarılıysa SDK'lar da
+  # yayınlanmalı, ama bir registry hatası release'i geri almamalı.
+  #
+  # Sürüm etiketten alınır — paket dosyalarındaki sürümle uyuşmazsa job durur.
+  # Sessizce eski sürüm yayınlamak, hiç yayınlamamaktan kötüdür.
+  publish-sdks:
+    name: Publish SDKs (npm + PyPI)
+    needs: release
+    runs-on: ubuntu-latest
+    # NPM_TOKEN / PYPI_API_TOKEN tanımlı değilse adımlar atlanır (aşağıda if).
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # ── npm: @tunr/cli ──
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Verify npm version matches tag
+        working-directory: sdk/node
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$pkg" != "${{ steps.ver.outputs.version }}" ]; then
+            echo "::error::sdk/node/package.json is $pkg but the tag is ${{ steps.ver.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Build & publish npm package
+        if: env.NODE_AUTH_TOKEN != ''
+        working-directory: sdk/node
+        run: |
+          npm ci --ignore-scripts || npm install --ignore-scripts
+          npm run build
+          npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # ── PyPI: tunr ──
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify PyPI version matches tag
+        working-directory: sdk/python
+        run: |
+          pkg=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+          if [ "$pkg" != "${{ steps.ver.outputs.version }}" ]; then
+            echo "::error::sdk/python/pyproject.toml is $pkg but the tag is ${{ steps.ver.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Build & publish Python package
+        if: env.PYPI_TOKEN != ''
+        working-directory: sdk/python
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine upload dist/*
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}

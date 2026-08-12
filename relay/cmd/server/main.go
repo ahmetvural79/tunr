@@ -52,7 +52,7 @@ func main() {
 			// bağlanır, bu arada route loader yerel cache'ten servis eder.
 			defer database.Close()
 			logger.Warn("PostgreSQL şu an erişilemiyor: %v", err)
-			logger.Warn("  → mevcut app'ler yerel route cache'ten servis edilir; "+
+			logger.Warn("  → mevcut app'ler yerel route cache'ten servis edilir; " +
 				"yeni deploy'lar Postgres dönene kadar bekler")
 		case database != nil:
 			defer database.Close()
@@ -163,7 +163,7 @@ func main() {
 
 	// ── Pivot Faz 0: control plane (/v1/apps) ──
 	// App yaratma + cloud route seed'leme (deploy pipeline sonraki aşama).
-	relay.NewControlPlane(jwtAuth, database, cfg.Domain, runnerClient).RegisterRoutes(mux)
+	relay.NewControlPlane(jwtAuth, database, cfg.Domain, runnerClient, scheduler).RegisterRoutes(mux)
 	if cfg.PaddleWebhookSecret != "" {
 		paddleWebhook := relay.NewPaddleWebhookHandler(database, cfg.PaddleWebhookSecret, relay.PaddlePlanConfig{
 			ProPriceID:      cfg.PaddleProPriceID,

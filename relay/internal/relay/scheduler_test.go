@@ -3,6 +3,8 @@ package relay
 import (
 	"context"
 	"errors"
+	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -14,8 +16,9 @@ type fakeNode struct {
 	sample  HostSample
 	err     error
 	status  string
+	logBody string
 
-	woke, slept, stopped, deleted int
+	woke, slept, stopped, deleted, logged int
 }
 
 func (f *fakeNode) Status(context.Context, string) (string, error) {
@@ -32,6 +35,14 @@ func (f *fakeNode) Wake(context.Context, string) (string, error) {
 	f.woke++
 	return f.ip, f.err
 }
+func (f *fakeNode) Logs(_ context.Context, _ string, _ int, _ bool) (io.ReadCloser, error) {
+	f.logged++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return io.NopCloser(strings.NewReader(f.logBody)), nil
+}
+
 func (f *fakeNode) Sleep(context.Context, string) error  { f.slept++; return f.err }
 func (f *fakeNode) Stop(context.Context, string) error   { f.stopped++; return f.err }
 func (f *fakeNode) Delete(context.Context, string) error { f.deleted++; return f.err }

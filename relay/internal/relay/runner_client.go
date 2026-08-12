@@ -175,6 +175,36 @@ func (c *RunnerClient) Status(ctx context.Context, appID string) (string, error)
 	return out.Status, nil
 }
 
+// Logs streams an app's output from the node.
+//
+// Deliberately does NOT use withTimeout: `follow` is a long-lived stream, and
+// the 20s lifecycle cap would sever it mid-line every time. The caller's ctx
+// (the CLI's HTTP request) is the lifetime that matters here.
+func (c *RunnerClient) Logs(ctx context.Context, appID string, tail int, follow bool) (io.ReadCloser, error) {
+	if c.baseURL == "" {
+		return nil, fmt.Errorf("no runner configured")
+	}
+	u := fmt.Sprintf("%s/v1/apps/%s/logs?tail=%d", c.baseURL, appID, tail)
+	if follow {
+		u += "&follow=1"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.secret)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		resp.Body.Close()
+		return nil, fmt.Errorf("runner logs %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	return resp.Body, nil
+}
+
 // Sleep moves an idle app into the WARM state (pause + reclaim pages into zram);
 // Stop cold-stops it, freeing RAM entirely.
 func (c *RunnerClient) Sleep(ctx context.Context, appID string) error {

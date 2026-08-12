@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/ahmetvural79/tunr/relay/internal/auth"
@@ -29,18 +30,100 @@ type ControlPlane struct {
 	db     *db.DB
 	domain string
 	runner *RunnerClient
+	// sched resolves which node holds an app. Per-app reads go through it
+	// rather than through runner directly — see scheduler.go.
+	sched *Scheduler
 }
 
 // NewControlPlane builds the control plane. database may be nil (in-memory mode);
 // endpoints then return 503 since apps require persistence.
-func NewControlPlane(jwtAuth *auth.JWTAuth, database *db.DB, domain string, runner *RunnerClient) *ControlPlane {
-	return &ControlPlane{jwt: jwtAuth, db: database, domain: domain, runner: runner}
+func NewControlPlane(jwtAuth *auth.JWTAuth, database *db.DB, domain string, runner *RunnerClient, sched *Scheduler) *ControlPlane {
+	return &ControlPlane{jwt: jwtAuth, db: database, domain: domain, runner: runner, sched: sched}
 }
 
 // RegisterRoutes mounts the control-plane endpoints on the mux.
+//
+// "/v1/apps" is an exact-match pattern, so "/v1/apps/logs" needs its own
+// registration — it does not fall through to handleApps.
 func (c *ControlPlane) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/apps", c.handleApps)
+	mux.HandleFunc("/v1/apps/logs", c.handleAppLogs)
 	mux.HandleFunc("/v1/deploy", c.handleDeploy)
+}
+
+// handleAppLogs streams an app's runtime output to its owner.
+//
+//	GET /v1/apps/logs?name=my-app&tail=200&follow=1   (Bearer JWT)
+func (c *ControlPlane) handleAppLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if c.db == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "logs require a database")
+		return
+	}
+	userID, ok := c.authUser(r)
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "valid Bearer token required (run: tunr login)")
+		return
+	}
+	name := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("name")))
+	if name == "" {
+		writeJSONError(w, http.StatusBadRequest, "?name= required")
+		return
+	}
+	app, exists, err := c.db.GetAppByName(r.Context(), name)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "lookup failed")
+		return
+	}
+	// Ownership check doubles as existence check — never confirm to a stranger
+	// that a name is taken.
+	if !exists || app.UserID != userID {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("no app named %q", name))
+		return
+	}
+	if c.sched == nil || !c.sched.Enabled() {
+		writeJSONError(w, http.StatusServiceUnavailable, "logs are not available (no runner configured)")
+		return
+	}
+
+	tail := 200
+	if v := r.URL.Query().Get("tail"); v != "" {
+		if n, convErr := strconv.Atoi(v); convErr == nil && n >= 0 && n <= 5000 {
+			tail = n
+		}
+	}
+	follow := r.URL.Query().Get("follow") == "1"
+
+	rc, err := c.sched.Logs(r.Context(), app.ID, tail, follow)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "could not read logs: "+err.Error())
+		return
+	}
+	defer rc.Close()
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+
+	flusher, _ := w.(http.Flusher)
+	buf := make([]byte, 32<<10)
+	for {
+		n, rerr := rc.Read(buf)
+		if n > 0 {
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				return
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		if rerr != nil {
+			return
+		}
+	}
 }
 
 // authUser extracts and verifies the Bearer JWT, returning the user id.

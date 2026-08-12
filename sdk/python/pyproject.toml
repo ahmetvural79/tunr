@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tunr"
-version = "0.4.0"
+version = "0.6.0"
 description = "Official Python SDK for tunr — localhost tunneling made simple."
 readme = "README.md"
 requires-python = ">=3.9"

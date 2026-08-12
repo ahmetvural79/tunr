@@ -73,7 +73,10 @@ type Driver interface {
 	Stop(ctx context.Context, appID string) error               // -> stopped (frees RAM)
 	Destroy(ctx context.Context, appID string) error            // remove everything
 	Status(ctx context.Context, appID string) (Status, error)
-	Logs(ctx context.Context, appID string, follow bool) (io.ReadCloser, error)
+	// Logs streams the unit's output. tail <= 0 means "all". follow keeps the
+	// stream open; the caller's context is the only thing that ends it, so a
+	// following caller must never wrap ctx in a lifecycle-length deadline.
+	Logs(ctx context.Context, appID string, tail int, follow bool) (io.ReadCloser, error)
 }
 
 // ---------- DockerDriver (own server, v0) ----------
@@ -502,8 +505,13 @@ func (d *DockerDriver) Status(ctx context.Context, appID string) (Status, error)
 	return StatusUnknown, nil
 }
 
-func (d *DockerDriver) Logs(ctx context.Context, appID string, follow bool) (io.ReadCloser, error) {
-	args := []string{"logs", "--tail", "200"}
+func (d *DockerDriver) Logs(ctx context.Context, appID string, tail int, follow bool) (io.ReadCloser, error) {
+	args := []string{"logs"}
+	if tail > 0 {
+		args = append(args, "--tail", strconv.Itoa(tail))
+	} else {
+		args = append(args, "--tail", "all")
+	}
 	if follow {
 		args = append(args, "-f")
 	}
@@ -517,8 +525,25 @@ func (d *DockerDriver) Logs(ctx context.Context, appID string, follow bool) (io.
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	// NOTE: caller must Close(); process reaping omitted in skeleton.
-	return pipe, nil
+	// Close() must reap the child. A `docker logs -f` that is never waited on
+	// leaves a zombie per request, and this endpoint is the one users hammer
+	// while a deploy misbehaves — exactly when the box can least afford it.
+	return &cmdReader{ReadCloser: pipe, cmd: cmd}, nil
+}
+
+// cmdReader ties a pipe's lifetime to its process: closing it kills and reaps.
+type cmdReader struct {
+	io.ReadCloser
+	cmd *exec.Cmd
+}
+
+func (c *cmdReader) Close() error {
+	err := c.ReadCloser.Close()
+	if c.cmd.Process != nil {
+		_ = c.cmd.Process.Kill()
+	}
+	_ = c.cmd.Wait()
+	return err
 }
 
 // Compile-time check that DockerDriver satisfies Driver.
@@ -551,7 +576,7 @@ func (f *FlyDriver) Destroy(ctx context.Context, appID string) error { return er
 func (f *FlyDriver) Status(ctx context.Context, appID string) (Status, error) {
 	return StatusUnknown, errFlyNotImplemented
 }
-func (f *FlyDriver) Logs(ctx context.Context, appID string, follow bool) (io.ReadCloser, error) {
+func (f *FlyDriver) Logs(ctx context.Context, appID string, tail int, follow bool) (io.ReadCloser, error) {
 	return nil, errFlyNotImplemented
 }
 

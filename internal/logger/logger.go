@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -27,6 +28,17 @@ type Logger struct {
 
 // Global default logger — because life is complicated enough without DI for logging
 var defaultLogger = &Logger{level: INFO}
+
+// infoOut is where INFO/WARN go. It is stdout by default because those lines
+// are part of the CLI's normal human output.
+//
+// `tunr mcp` moves it to stderr: there, stdout *is* the JSON-RPC transport, and
+// a single "INFO MCP server started" line on it is a protocol violation that
+// strict MCP clients report as a failed connection.
+var infoOut io.Writer = os.Stdout
+
+// SetInfoOutput redirects INFO and WARN. ERROR/FATAL/DEBUG are always stderr.
+func SetInfoOutput(w io.Writer) { infoOut = w }
 
 // Styles for each severity — terminals deserve a splash of color
 var (
@@ -79,7 +91,7 @@ func Debug(format string, args ...any) {
 func Info(format string, args ...any) {
 	if defaultLogger.level <= INFO {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Fprintf(os.Stdout, "%s %s %s\n",
+		fmt.Fprintf(infoOut, "%s %s %s\n",
 			timestamp(),
 			infoStyle.Sprint(" INFO"),
 			sanitize(msg),
@@ -91,7 +103,7 @@ func Info(format string, args ...any) {
 func Warn(format string, args ...any) {
 	if defaultLogger.level <= WARN {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Fprintf(os.Stdout, "%s %s %s\n",
+		fmt.Fprintf(infoOut, "%s %s %s\n",
 			timestamp(),
 			warnStyle.Sprint(" WARN"),
 			sanitize(msg),

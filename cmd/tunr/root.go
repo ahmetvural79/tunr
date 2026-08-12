@@ -44,6 +44,8 @@ func Execute() error {
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable debug logging")
+	rootCmd.PersistentFlags().StringVar(&relayFlag, "relay", "",
+		"Relay server URL (self-hosting; default https://relay.tunr.sh, or $TUNR_RELAY_URL)")
 
 	rootCmd.AddCommand(
 		newShareCmd(),

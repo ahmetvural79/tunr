@@ -85,6 +85,56 @@ Internet
 └──────────────────────┘
 ```
 
+## Adding the cloud layer (`tunr deploy`)
+
+Everything above self-hosts **tunnels**. To also run `tunr deploy` — building
+and hosting apps on your own box — you need the runner sidecar, which drives
+Docker directly.
+
+> **Preview.** This path is newer than the tunnel stack and assumes a Linux
+> host you control. It does not work on Docker Desktop for macOS: the density
+> levers write to the host cgroup hierarchy.
+
+### 1. Host prerequisites
+
+```bash
+sudo ./scripts/host-density.sh     # zram + cgroup v2 soft limits
+docker network create --opt com.docker.network.bridge.enable_icc=false tunr-apps
+```
+
+`host-density.sh` is not optional. Without zram, `memory.reclaim` has nowhere
+to evict to and `memory.high` containment fails outright — an app that should
+have been throttled triggers a system-wide OOM instead. Install gVisor
+(`runsc`) too, or set the runner to `runc` and accept weaker isolation.
+
+### 2. Start the runner
+
+```bash
+docker compose -f docker-compose.runner.yml up -d
+```
+
+The runner needs `/sys/fs/cgroup` mounted **rw**, `/proc` with `pid: host`, and
+the Docker socket. Without those every density lever silently no-ops — check
+for `cgroup levers OFF` in its startup log.
+
+### 3. Point the relay at it
+
+```bash
+# .env
+RUNNER_URL=http://tunr-runner:9091
+RUNNER_SECRET=<shared secret, also set on the runner>
+```
+
+Restart the relay, then:
+
+```bash
+tunr login --relay https://tunnel.yourcompany.com
+tunr deploy --name my-app --relay https://tunnel.yourcompany.com
+```
+
+See [SCALING.md](SCALING.md) for capacity thresholds and when to split the
+builder onto its own machine.
+
 ## Systemd (without Docker)
 
 If you prefer running without containers:

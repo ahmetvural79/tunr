@@ -10,10 +10,12 @@
 
 <br/><br/>
 
-**Deploy the apps your agent builds** — host and share them on tunr's infrastructure, with instant localhost tunnels included.
+**Ship the apps your agent builds.**
+One command — or one MCP call — and the thing Claude Code just wrote stops living on `localhost`.
 
 [![Release](https://img.shields.io/github/v/release/ahmetvural79/tunr?color=7c3aed)](https://github.com/ahmetvural79/tunr/releases)
-[![License: PolyForm Shield](https://img.shields.io/badge/License-PolyForm%20Shield%201.0.0-7c3aed.svg)](LICENSE)
+[![CLI: Apache 2.0](https://img.shields.io/badge/CLI-Apache--2.0-7c3aed.svg)](LICENSE)
+[![Relay: PolyForm Shield](https://img.shields.io/badge/relay-PolyForm%20Shield-6b7280.svg)](relay/LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00add8)](go.mod)
 
 [tunr.sh](https://tunr.sh) · [Docs](https://tunr.sh/docs) · [Dashboard](https://app.tunr.sh)
@@ -23,406 +25,386 @@
 ---
 
 ```bash
-# Deploy an app that stays alive after you close your laptop   (preview)
 $ tunr deploy --name sprint
-  🚀 Live:  https://sprint.tunr.sh    (sleeps when idle, wakes on request)
-
-# …or just tunnel localhost in 3 seconds   (stable)
-$ tunr share --port 3000
-  🚀 Tunnel active:  https://abc1x2y3.tunr.sh
+  ▲ Packing … 41 files, 210 KB
+  ▲ building (nixpacks auto-detect)
+  🚀 Live: https://sprint.tunr.sh
+     (sleeps when idle, wakes on request)
 ```
 
-## What is tunr?
+Or don't type anything — tell your agent:
 
-**tunr runs the small apps you build with coding agents** (Claude Code, Cursor) — the personal utilities, internal tools and one-off dashboards that used to die on `localhost`. Deploy one with a single command — or one **MCP call from your agent** — and it runs on tunr's infrastructure: it sleeps when idle, wakes on request, and keeps serving after you close your laptop. Soon, apps become shareable like a Google Doc: login, viewer/editor roles and comments enforced at the edge, so your app never contains a line of auth code.
+> *"deploy this to tunr"*
 
-The **3-second tunnel** that tunr started as is still here — free and first-class — now it's the on-ramp: `tunr share --port 3000` gives any localhost an instant public HTTPS URL (HTTP/WebSocket, TCP, UDP, TLS; multi-region), a developer-first alternative to ngrok and Cloudflare Tunnel, shipped as a single static Go binary (macOS, Linux, Windows — ARM64 included).
+…and it calls `tunr_deploy` over MCP and hands you back the URL.
 
-## Cloud: deploy &amp; share 
-Tunnels are how you *preview* localhost. The cloud is where your app *lives*.
+---
 
-```bash
-tunr deploy --name my-app        # build (Nixpacks) + run on tunr; get a live URL
-tunr apps                        # list your cloud apps
-tunr apps logs my-app            # stream build + runtime logs
-```
+## Why
 
-- **Stays alive** — close your laptop; your app keeps serving. Idle apps sleep and wake on the next request (scale-to-zero).
-- **Agent-native** — everything above is also an **MCP tool**. Tell your agent *"ship this to tunr"* and it calls `deploy_app` for you. The dashboard, CLI and MCP are three faces of one control plane.
-- **Share like a Google Doc** *(rolling out)* — invite people by email or company domain with viewer/editor roles, enforced at the edge; your app writes zero auth code.
-- **Your data travels with it** *(rolling out)* — SQLite-per-app, snapshots, and `tunr rollback` for code *and* data.
+Coding agents produce a lot of small software: the internal dashboard, the
+one-off scraper, the tool that does exactly one annoying thing for your team.
+Almost all of it dies on `localhost`, because the gap between "it works on my
+machine" and "my colleague can open it" is still an afternoon of Dockerfiles,
+DNS and IAM.
 
+tunr closes that gap to one command. The app builds with Nixpacks (no
+Dockerfile), gets an HTTPS URL, sleeps when nobody's using it and wakes on the
+next request — so hosting a dozen barely-used internal tools costs about what
+hosting one does.
 
+The 3-second tunnel tunr started as is still here, still free. It's now the
+on-ramp rather than the product.
 
-
+---
 
 ## Install
 
 ```bash
-# macOS (Homebrew) — recommended
+# macOS / Linux — Homebrew
 brew install ahmetvural79/tap/tunr
 
-# Linux / macOS (one-liner)
-curl -sSL https://tunr.sh/install | sh
+# macOS / Linux — install script
+curl -fsSL https://raw.githubusercontent.com/ahmetvural79/tunr/main/install.sh | sh
 
-# npm (Node.js projects)
-npx tunr@latest share --port 3000
+# Go
+go install github.com/ahmetvural79/tunr/cmd/tunr@latest
 
-# Docker
-docker run --rm -it --network host ghcr.io/ahmetvural79/tunr:v0.4.0 share --port 3000
-
-# Python SDK
-pip install tunr
-
-# Node.js SDK
-npm install @tunr/cli
-
-# Build from source
-git clone https://github.com/ahmetvural79/tunr.git
-cd tunr
-go build -o tunr ./cmd/tunr
+# From source
+git clone https://github.com/ahmetvural79/tunr.git && cd tunr && make build
 ```
 
-Requires **Go 1.22+** to build from source.
+A single static binary. macOS, Linux and Windows, amd64 and arm64, no runtime
+dependencies. Verify it with `tunr doctor`.
 
-> **Free forever.** The CLI and all core features are open source. Cloud features (custom subdomains, team dashboards) require a [tunr.sh](https://tunr.sh) account.
-
----
-
-## Quick Start
+**SDKs** — for driving tunnels from code rather than the shell:
 
 ```bash
-# 1. Start your dev server
-npm run dev  # → http://localhost:3000
-
-# 2. Share it
-tunr share --port 3000
-
-# That's it. You get:
-#   🚀 https://abc1x2y3.tunr.sh
+pip install tunr          # Python
+npm install @tunr/cli     # Node.js
 ```
 
 ---
 
-## Commands
+## Cloud — deploy & host
 
 ```bash
-# Share a local port (foreground)
-tunr share --port 3000
-tunr share --port 8080 --subdomain myapp  # custom subdomain (Pro)
-
-# Route paths to different ports
-tunr share --route /=3000 --route /api=8080
-
-# Password protection & expiration
-tunr share -p 8080 --password "secret" --ttl 30m
-
-# Vibecoder demo superpowers
-tunr share -p 3000 --demo --freeze --inject-widget
-tunr share -p 3000 --auto-login "Cookie: session=demo"
-
-# Secure & debug (Pinggy-powered)
-tunr share -p 3000 --qr                     # QR code for mobile scanning
-tunr share -p 3000 --auth-token "my-secret" # Bearer token access control
-tunr share -p 3000 --allow-ip "1.2.3.0/24"  # IP whitelist (CIDR)
-tunr share -p 3000 --header-add "X-Debug: 1"
-tunr share -p 3000 --x-forwarded-for --original-url
-tunr share -p 3000 --cors-origin "https://myapp.com"
-
-# Custom domain
-tunr share -p 3000 --domain demo.client.com
-
-# Machine-readable output for CI/CD
-tunr share -p 3000 --json
-
-# Daemon mode (runs in background)
-tunr start --port 3000
-tunr stop
-tunr status
-
-# Inspect & debug
-tunr open           # Open HTTP inspector dashboard
-tunr logs           # Stream request logs
-tunr logs --follow  # Real-time log stream
-tunr replay <id>    # Re-send a captured request
-
-# System
-tunr doctor         # System health check
-tunr version
-tunr update         # Self-update to latest release
-tunr uninstall      # Remove tunr from your system
-
-# Auth
-tunr login
-tunr logout
-
-# Config
-tunr config show
-tunr config init    # Creates .tunr.json in cwd
-
-# AI / MCP
-tunr mcp            # Start MCP server (Claude, Cursor, Windsurf)
-
-# TCP tunnels
-tunr tcp --port 5432
-tunr tcp --port 22 --qr
-tunr tcp --port 6379 --allow-ip 10.0.0.0/8 --region ams
-
-# UDP tunnels (v0.4.0)
-tunr udp --port 53                          # DNS server
-tunr udp --port 27015 --region ams           # Game server
-
-# TLS tunnels — end-to-end encryption (v0.4.0)
-tunr tls --port 8443                         # Zero-trust: relay can't read traffic
-
-# Multi-tunnel from config (v0.4.0)
-tunr up                                      # Start all tunnels from .tunr.json
-tunr down                                    # Stop all daemon tunnels
-
-# System service (v0.4.0)
-tunr service install --port 3000             # Auto-start on boot
-tunr service status
-tunr service uninstall
-
-# Corporate proxy (v0.4.0)
-tunr share -p 3000 --proxy http://proxy:8080
+tunr login                        # magic-link, token goes to your OS keychain
+tunr deploy --name my-app         # build + run; prints the live URL
+tunr apps                         # list your apps
+tunr apps logs my-app --follow    # stream build + runtime logs
+tunr apps delete my-app           # remove it, free the subdomain
 ```
 
-### Full CLI Reference
+| | |
+|---|---|
+| **Build** | Nixpacks auto-detect — Node, Python, Go, Ruby, Rust, PHP, Java. A `Dockerfile` is used if present. |
+| **Isolation** | Every app runs in its own gVisor sandbox with CPU, memory and disk quotas. |
+| **Scale to zero** | Idle → paused with its memory reclaimed (~20 MB resident), then stopped. Wake p50 is ~150 ms. |
+| **Secrets** | `.env` files are never uploaded. Pass them with `--env KEY=VALUE`. |
+| **Stays up** | Close your laptop. The app keeps serving. |
 
-| Command | Description |
-|---------|-------------|
-| `tunr share -p PORT` | Expose local port with HTTPS URL |
-| `tunr share -p PORT -s NAME` | Custom subdomain (Pro) |
-| `tunr share --route /PATH=PORT` | Map specific URL paths to local ports |
-| `tunr share -p PORT --password "PASS"` | Enable Basic Authentication |
-| `tunr share -p PORT --ttl 1h` | Auto-close tunnel after duration |
-| `tunr share -p PORT --demo` | Read-only demo mode |
-| `tunr share -p PORT --freeze` | Freeze mode (cache-on-crash) |
-| `tunr share -p PORT --inject-widget` | Inject feedback widget into HTML |
-| `tunr share -p PORT --auto-login "Cookie: s=demo"` | Auto-inject auth cookie |
-| `tunr share -p PORT --domain HOST` | Use custom domain |
-| `tunr share -p PORT --json` | JSON output (CI/CD, scripting) |
-| `tunr share -p PORT --qr` | Display QR code for the tunnel URL |
-| `tunr share -p PORT --auth-token TOKEN` | Bearer token / API key protection |
-| `tunr share -p PORT --allow-ip CIDR` | IP whitelist (CIDR notation) |
-| `tunr share -p PORT --header-add "H: V"` | Add headers to forwarded requests |
-| `tunr share -p PORT --header-replace "H: V"` | Replace headers before forwarding |
-| `tunr share -p PORT --header-remove H` | Remove headers before forwarding |
-| `tunr share -p PORT --x-forwarded-for` | Inject X-Forwarded-For with client IP |
-| `tunr share -p PORT --original-url` | Inject X-Original-URL with public URL |
-| `tunr share -p PORT --cors-origin ORIGIN` | CORS preflight allowed origins |
-| `tunr start -p PORT` | Background daemon mode |
-| `tunr stop` | Stop daemon |
-| `tunr status` | Show active tunnels |
-| `tunr logs` | Stream HTTP request logs |
-| `tunr open` | Open inspector dashboard |
-| `tunr replay <id>` | Replay captured request |
-| `tunr doctor` | Diagnose issues |
-| `tunr login` | Authenticate (browser-based OAuth) |
-| `tunr update` | Self-update CLI binary |
-| `tunr uninstall` | Remove tunr from system |
-| `tunr mcp` | Start MCP server |
-| `tunr config init` | Create `.tunr.json` |
-| `tunr tcp -p PORT` | Expose local port via TCP tunnel |
-| `tunr tcp -p PORT --qr` | TCP tunnel with QR code |
-| `tunr tcp -p PORT --region REGION` | TCP tunnel in specific region (ams, sea, sin) |
-| `tunr udp -p PORT` | Expose local UDP port (DNS, game servers) |
-| `tunr tls -p PORT` | TLS tunnel with end-to-end encryption |
-| `tunr up` | Start all tunnels from `.tunr.json` |
-| `tunr down` | Stop all running daemon tunnels |
-| `tunr service install --port PORT` | Install as system service (auto-start) |
-| `tunr service uninstall` | Remove system service |
-| `tunr service status` | Check service status |
-| `tunr share -p PORT --proxy URL` | Connect through HTTP/SOCKS5 proxy |
-| `tunr share -p PORT --region REGION` | HTTP tunnel in specific region |
+```bash
+tunr deploy --name sprint --port 3000 --env DATABASE_URL=postgres://…
+```
+
+> **Status: preview.** Deploy works end to end and is what the MCP tools drive.
+> Role-based sharing, per-app SQLite and `tunr rollback` are **not built yet** —
+> see [Roadmap](#roadmap) for what's real and what isn't.
 
 ---
 
-## Troubleshooting
+## Agent-native (MCP)
 
-### Next.js: blank page over `tunr share` (port 3000)
+The CLI and the MCP server are two faces of the same control plane. Anything
+you can do in a terminal, your agent can do in a tool call.
 
-Next.js **dev** blocks cross-origin access to dev-only endpoints unless you allow your tunnel host.
+**Claude Code:**
 
-1. Add **`allowedDevOrigins`** in `next.config.js` / `next.config.ts` (see [Next.js docs — allowedDevOrigins](https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins)):
+```bash
+claude mcp add tunr -- tunr mcp
+```
 
-```js
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  allowedDevOrigins: ['*.tunr.sh', 'tunr.sh'],
+**Claude Desktop** (`~/.claude/claude_desktop_config.json`) **/ Cursor** (`.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "tunr": { "command": "tunr", "args": ["mcp"] }
+  }
 }
-module.exports = nextConfig
 ```
 
-Use your real tunnel domain pattern if you use a custom subdomain or self-hosted edge.
+### Tools
 
-2. For a **stable** public demo without HMR, prefer a production build:
+| Tool | What it does |
+|---|---|
+| `tunr_deploy` | Build & host a directory on the tunr cloud, return the live URL |
+| `tunr_list_apps` | List deployed apps with URL and status |
+| `tunr_app_logs` | Read an app's build + runtime logs (for debugging a bad deploy) |
+| `tunr_delete_app` | Delete an app and free its subdomain |
+| `tunr_share` | Open a temporary public tunnel to a running local port |
+| `tunr_status` | List active tunnels |
+| `tunr_inspect` | List HTTP requests captured by a tunnel |
+| `tunr_replay` | Replay a captured request against your local server |
+| `tunr_stop` | Close a tunnel |
 
-```bash
-npm run build && npm run start
-tunr share --port 3000
-```
-
-### “Chrome offline” / “This site can’t be reached” / dinosaur page when using `--inject-widget`
-
-That page is the browser’s **network error** UI — the **main HTML document** never completed successfully (not the widget script failing in isolation).
-
-
-
-### WebSocket / HMR over the public URL
-
-The tunr **edge relay** upgrades the public `wss://` connection and streams frames to your **CLI**, which opens a local `ws://` connection to your dev server. That gives you end-to-end HMR-style WebSockets without a separate tunnel product.
-
-**Still required for some frameworks:** Next.js dev server may block cross-origin requests until you add your tunnel host to `allowedDevOrigins` in `next.config` (see above). If HMR still fails, fall back to **`next build && next start`** or test HMR on **localhost**.
-
-**Relay / edge:** WebSocket bridging is implemented on the tunr relay; self-hosted edges must run a relay build that includes this feature.
-
-Optional: for relay **origin checks** on the browser WebSocket handshake, set `TUNR_WS_EXTRA_ALLOWED_ORIGIN_SUFFIXES` (comma-separated hostname suffixes).
+`tunr_deploy` and `tunr_share` are deliberately distinct, and the tool
+descriptions say so: *deploy* means "host this, it should outlive my laptop",
+*share* means "expose what's running on :3000 right now". Cloud tools need
+`tunr login` first.
 
 ---
 
-## Vibecoder Demo Features
+## Tunnels
 
-tunr ships with four proxy-level superpowers designed for freelancers and agencies demoing to clients:
+Still free, still unlimited, still 3 seconds.
 
-### ❄️ Freeze Mode (`--freeze`)
+```bash
+tunr share --port 3000
+#  🚀 https://abc1x2y3.tunr.sh
+```
 
-If your local server crashes mid-demo, tunr serves the last successful response from memory. Your client never sees a broken page.
+HTTP/HTTPS with WebSocket (HMR works), plus raw **TCP**, **UDP** and
+end-to-end-encrypted **TLS** tunnels — all multiplexed over one connection.
+Regions: `ams` (Amsterdam), `sea` (Seattle), `sin` (Singapore).
+
+<details>
+<summary><b>Demo features</b> — freeze, read-only, feedback widget, auto-login</summary>
+
+<br/>
+
+Built for showing work-in-progress to someone who is not a developer.
+
+**❄️ Freeze Mode (`--freeze`)** — if your local server crashes mid-demo, tunr
+serves the last successful response from memory. The other person never sees a
+broken page.
 
 ```bash
 tunr share --port 3000 --freeze
 ```
 
-### 🛡️ Read-Only Demo Mode (`--demo`)
-
-Intercept destructive HTTP methods (`POST`, `PUT`, `DELETE`) at the proxy layer. The client can click "Place Order" — nothing actually writes to your database.
+**🛡️ Read-Only Demo Mode (`--demo`)** — intercepts `POST`, `PUT` and `DELETE`
+at the proxy layer. They can click "Place Order"; nothing writes to your
+database.
 
 ```bash
 tunr share --port 3000 --demo
 ```
 
-### 💬 Feedback Widget Injection (`--inject-widget`)
-
-Injects a transparent overlay widget into every HTML page served through the tunnel. Clients can pin visual feedback and errors are forwarded to your terminal in real-time. Like Marker.io, but free and built-in.
+**💬 Feedback Widget (`--inject-widget`)** — injects an overlay into every HTML
+page served through the tunnel. Viewers pin visual feedback; it arrives in your
+terminal in real time.
 
 ```bash
 tunr share --port 3000 --inject-widget
 ```
 
-### 🔑 Auto-Login Bypass (`--auto-login`)
-
-Inject an auth cookie so your client lands on the demo account automatically — no signup, no email verification.
+**🔑 Auto-Login Bypass (`--auto-login`)** — inject an auth cookie so the visitor
+lands on a demo account. No signup, no email verification.
 
 ```bash
 tunr share --port 3000 --auto-login "Cookie: session=demo-token"
 ```
 
-Combine them all for the ultimate demo setup:
+All at once:
 
 ```bash
 tunr share --port 3000 --demo --freeze --inject-widget
 ```
 
----
+</details>
 
-## Advanced Tunnel Features
+<details>
+<summary><b>Access control</b> — password, bearer token, IP whitelist, TTL, QR</summary>
 
-### 🔒 Password Protected Tunnels (`--password`)
-
-Add Basic Authentication to your public URL instantly without writing any code. Keep your development environments secure from unauthorized access while sharing with clients or third parties.
+<br/>
 
 ```bash
+# Basic auth (user optional)
 tunr share -p 8080 --password "secret"
-# Or provide a specific username
 tunr share -p 8080 --password "client:secret"
-```
 
-### ⏳ Auto-Expiring Tunnels (`--ttl`)
+# Bearer token — Authorization: Bearer <token> or ?token=<token>
+tunr share -p 3000 --auth-token "my-super-secret-key"
 
-Forget to stop a tunnel exposing your local machine? Use a Time-To-Live (TTL). Once the duration expires, the tunnel daemon safely terminates the connection and shuts down the proxy.
+# IP whitelist (CIDR)
+tunr share -p 3000 --allow-ip "203.0.113.0/24"
+tunr share -p 3000 --allow-ip "10.0.0.0/8,172.16.0.0/12"
 
-```bash
+# Auto-expire — the tunnel closes itself
 tunr share -p 3000 --ttl 1h30m
+
+# QR code, for opening it on a phone
+tunr share -p 3000 --qr
 ```
 
-### 🔀 Path Routing (`--route`)
+</details>
 
-Map different incoming URL paths to different upstream ports on your machine. This is perfect for testing microservices or serving your frontend and API from a single public proxy domain.
+<details>
+<summary><b>Routing & headers</b> — path routing, regions, header rewriting, CORS, proxies</summary>
+
+<br/>
 
 ```bash
-# Anything to / goes to 3000, /api goes to 8080
+# Path routing — one public URL, several local ports
 tunr share --route /=3000 --route /api=8080
+
+# Region selection
+tunr share --port 3000 --region ams     # Amsterdam (EU)
+tunr share --port 3000 --region sea     # Seattle (US West)
+tunr share --port 3000 --region sin     # Singapore (APAC)
+
+# Header rewriting
+tunr share -p 3000 --header-add "X-Debug: true"
+tunr share -p 3000 --header-replace "Host: internal.local"
+tunr share -p 3000 --header-remove "X-Powered-By"
+
+# Forwarded headers — X-Forwarded-For (real client IP), X-Original-URL
+tunr share -p 3000 --x-forwarded-for --original-url
+
+# CORS preflight without touching your server
+tunr share -p 3000 --cors-origin "https://myapp.com"
+
+# Behind a corporate proxy
+tunr share -p 3000 --proxy http://proxy:8080
+
+# Custom domain (Pro)
+tunr share -p 3000 --domain demo.client.com
 ```
 
-### 🌐 Multi-Region Routing (`--region`)
+</details>
 
-Select a preferred relay region for lower latency to specific geographic areas.
+<details>
+<summary><b>TCP / UDP / TLS</b> — databases, SSH, game servers, zero-knowledge passthrough</summary>
+
+<br/>
 
 ```bash
-# European relay (Amsterdam)
-tunr share --port 3000 --region ams
+# TCP — raw bytes, no HTTP parsing on the relay
+tunr tcp --port 5432                          # PostgreSQL
+tunr tcp --port 22 --qr                       # SSH, QR for mobile
+tunr tcp --port 6379 --allow-ip 10.0.0.0/8    # Redis, restricted
+tunr tcp --port 3306 --region ams             # MySQL, EU relay
 
-# US West relay (Seattle)
-tunr share --port 3000 --region sea
+# UDP — DNS, game servers, anything datagram
+tunr udp --port 53
+tunr udp --port 27015 --region ams
 
-# Asia relay (Singapore)
-tunr share --port 3000 --region sin
-
-# TCP tunnel with region selection
-tunr tcp --port 5432 --region ams
+# TLS — end-to-end encrypted, SNI passthrough. The relay cannot read it.
+tunr tls --port 8443
 ```
 
-Currently available regions:
-- `ams` — Amsterdam, EU (Europe)
-- `sea` — Seattle, US West (Americas)
-- `sin` — Singapore (Asia-Pacific)
+</details>
 
-### 🔌 TCP Tunnels (`tunr tcp`)
+<details>
+<summary><b>Daemon, service & multi-tunnel</b></summary>
 
-Expose raw TCP services — databases, SSH, Redis, game servers — through secure tunnels without HTTP overhead.
+<br/>
 
 ```bash
-# PostgreSQL
-tunr tcp --port 5432
+# Background daemon
+tunr start --port 3000
+tunr status
+tunr stop
 
-# SSH with QR code for mobile sharing
-tunr tcp --port 22 --qr
+# Several tunnels from .tunr.json
+tunr up
+tunr down
 
-# Redis with IP restriction
-tunr tcp --port 6379 --allow-ip 10.0.0.0/8
-
-# MySQL in specific region
-tunr tcp --port 3306 --region ams
+# Install as a system service (systemd / launchd) — starts on boot
+tunr service install --port 3000
+tunr service status
+tunr service uninstall
 ```
 
-TCP tunnels forward raw bytes over the same WebSocket control channel — no HTTP parsing on the relay side. Perfect for any TCP-based service.
+</details>
+
+<details>
+<summary><b>Inspect & replay</b> — the local HTTP inspector</summary>
+
+<br/>
+
+```bash
+tunr open           # dashboard at http://localhost:19842
+tunr logs --follow  # stream requests in the terminal
+tunr replay <id>    # re-send a captured request to your local server
+```
+
+Live request/response stream, headers, body, timing, one-click replay, export
+as a `curl` command. Everything stays on your machine.
+
+</details>
+
+<details>
+<summary><b>Full CLI reference</b></summary>
+
+<br/>
+
+| Command | Description |
+|---------|-------------|
+| **Cloud** | |
+| `tunr deploy [dir]` | Build & host a project; `--name`, `--port`, `--env KEY=VAL` |
+| `tunr apps` | List your cloud apps |
+| `tunr apps logs <name>` | Stream logs; `--follow`, `--tail N` |
+| `tunr apps delete <name>` | Delete an app |
+| **Tunnels** | |
+| `tunr share -p PORT` | Expose a local port over HTTPS |
+| `tunr share -p PORT -s NAME` | Custom subdomain (Pro) |
+| `tunr share --route /PATH=PORT` | Map URL paths to local ports |
+| `tunr share -p PORT --password PASS` | Basic authentication |
+| `tunr share -p PORT --ttl 1h` | Auto-close after a duration |
+| `tunr share -p PORT --demo` | Read-only demo mode |
+| `tunr share -p PORT --freeze` | Serve last-good response on crash |
+| `tunr share -p PORT --inject-widget` | Inject the feedback widget |
+| `tunr share -p PORT --auto-login "Cookie: s=demo"` | Auto-inject an auth cookie |
+| `tunr share -p PORT --domain HOST` | Custom domain |
+| `tunr share -p PORT --qr` | Print a QR code for the URL |
+| `tunr share -p PORT --auth-token TOKEN` | Bearer token protection |
+| `tunr share -p PORT --allow-ip CIDR` | IP whitelist |
+| `tunr share -p PORT --header-add/-replace/-remove` | Rewrite headers |
+| `tunr share -p PORT --x-forwarded-for --original-url` | Proxy headers |
+| `tunr share -p PORT --cors-origin ORIGIN` | CORS preflight |
+| `tunr share -p PORT --proxy URL` | HTTP/SOCKS5 proxy |
+| `tunr share -p PORT --region ams\|sea\|sin` | Pick a relay region |
+| `tunr share -p PORT --json` | JSON output for CI |
+| `tunr tcp -p PORT` / `tunr udp -p PORT` / `tunr tls -p PORT` | TCP / UDP / TLS tunnels |
+| `tunr up` / `tunr down` | Start/stop everything in `.tunr.json` |
+| `tunr start` / `tunr stop` / `tunr status` | Daemon mode |
+| `tunr service install\|status\|uninstall` | System service |
+| **Everything else** | |
+| `tunr login` / `tunr logout` | Authentication |
+| `tunr open` / `tunr logs` / `tunr replay <id>` | Inspector |
+| `tunr mcp` | Start the MCP server (stdio) |
+| `tunr config init` / `tunr config show` | `.tunr.json` |
+| `tunr doctor` | Diagnose your setup |
+| `tunr update` / `tunr uninstall` / `tunr version` | Maintenance |
+
+Global flags: `--relay URL` (point at your own relay), `--verbose`.
+
+</details>
 
 ---
 
-## Programming APIs
+## SDKs
 
-### Python SDK
+<details>
+<summary><b>Python</b> — <code>pip install tunr</code></summary>
 
-```bash
-pip install tunr
-```
+<br/>
 
 ```python
 from tunr import TunrClient, TunnelOptions
 
 client = TunrClient()
 
-# Simple tunnel
 tunnel = client.share(port=3000)
 print(tunnel.public_url)
 
-# TCP / UDP / TLS tunnels (v0.4.0)
-db_tunnel = client.tcp(port=5432)
+db_tunnel  = client.tcp(port=5432)
 dns_tunnel = client.udp(port=53)
 tls_tunnel = client.tls(port=8443)
 
-# With options
 opts = TunnelOptions(
     subdomain="myapp",
     password="demo123",
@@ -434,41 +416,34 @@ opts = TunnelOptions(
 )
 tunnel = client.share(port=8080, opts=opts)
 
-# Inspect requests
 requests = client.get_requests(tunnel.subdomain)
+client.replay_request(tunnel.subdomain, requests[0]["id"], port=3000)
 
-# Replay a request
-client.replay_request(tunnel.subdomain, requests[0]['id'], port=3000)
+metrics = client.get_metrics()   # Prometheus text
+health  = client.health_check()  # {"status": "ok"}
 
-# Observability (v0.4.0)
-metrics = client.get_metrics()     # Prometheus format
-health = client.health_check()     # {"status": "ok"}
-
-# Clean up
 tunnel.close()
 ```
 
-### Node.js SDK
+</details>
 
-```bash
-npm install @tunr/cli
-```
+<details>
+<summary><b>Node.js</b> — <code>npm install @tunr/cli</code></summary>
+
+<br/>
 
 ```typescript
 import { TunrClient } from '@tunr/cli'
 
 const client = new TunrClient()
 
-// Simple tunnel
 const tunnel = await client.share(3000)
 console.log(tunnel.publicUrl)
 
-// TCP / UDP / TLS tunnels (v0.4.0)
-const dbTunnel = await client.tcp(5432)
+const dbTunnel  = await client.tcp(5432)
 const dnsTunnel = await client.udp(53)
 const tlsTunnel = await client.tls(8443)
 
-// With options
 const appTunnel = await client.share(8080, {
   subdomain: 'myapp',
   password: 'demo123',
@@ -479,138 +454,21 @@ const appTunnel = await client.share(8080, {
   ttl: '2h',
 })
 
-// Event-based lifecycle
 tunnel.on('ready', () => console.log('Tunnel live'))
 tunnel.on('error', (err) => console.error(err))
-tunnel.on('exit', () => console.log('Tunnel closed'))
+tunnel.on('exit',  () => console.log('Tunnel closed'))
 
-// Inspect & replay
 const requests = await client.getRequests('myapp')
 await client.replayRequest('myapp', requests[0].id, 3000)
 
-// Observability (v0.4.0)
-const metrics = await client.getMetrics()    // Prometheus text
-const health = await client.healthCheck()    // {status: "ok"}
-
-// Clean up
 await tunnel.close()
 ```
 
----
-
-## Security & Debugging (Pinggy-Inspired)
-
-tunr now includes all the enterprise-grade tunnel security and debugging features from Pinggy, built natively:
-
-### 📱 QR Code Tunnel Sharing (`--qr`)
-
-Instantly generate a scannable QR code for your tunnel URL. Perfect for mobile testing and sharing URLs with clients.
-
-```bash
-tunr share -p 3000 --qr
-```
-
-### 🔑 Bearer Token Access (`--auth-token`)
-
-Protect your tunnel with a simple API key/token. Requests must include `Authorization: Bearer <token>` or pass `?token=<token>` in the query string.
-
-```bash
-tunr share -p 3000 --auth-token "my-super-secret-key"
-```
-
-### 🛡️ IP Whitelisting (`--allow-ip`)
-
-Restrict tunnel access to specific IP ranges using CIDR notation. Only whitelisted IPs can reach your local server.
-
-```bash
-# Only allow your office network
-tunr share -p 3000 --allow-ip "203.0.113.0/24"
-
-# Multiple networks
-tunr share -p 3000 --allow-ip "10.0.0.0/8,172.16.0.0/12"
-```
-
-### 🔧 Live Header Modification
-
-Add, replace, or remove HTTP headers on the fly before they reach your local server.
-
-```bash
-# Inject a debug header
-tunr share -p 3000 --header-add "X-Debug: true"
-
-# Replace the Host header for internal routing
-tunr share -p 3000 --header-replace "Host: internal.local"
-
-# Remove fingerprinting headers
-tunr share -p 3000 --header-remove "X-Powered-By"
-```
-
-### 🌐 Forwarded Headers (`--x-forwarded-for`, `--original-url`)
-
-Inject standard proxy headers so your application knows the original client IP and URL.
-
-```bash
-tunr share -p 3000 --x-forwarded-for --original-url
-```
-
-- `X-Forwarded-For` — the real client IP address
-- `X-Original-URL` — the full public tunnel URL that was requested
-
-### 🔓 CORS Preflight (`--cors-origin`)
-
-Allow browser CORS preflight requests from specific origins without server-side changes.
-
-```bash
-tunr share -p 3000 --cors-origin "https://myapp.com"
-```
-
-
-## HTTP Inspector
-
-tunr ships with a built-in HTTP request inspector (like ngrok's web UI, but local).
-
-```bash
-tunr open  # opens http://localhost:19842
-```
-
-Features:
-- Live request/response stream
-- Headers, body, timing
-- One-click replay
-- Export as curl command
-
----
-
-## MCP Integration (Claude, Cursor, Windsurf)
-
-tunr implements the **Model Context Protocol** — AI agents can manage tunnels directly.
-
-**Claude Desktop** (`~/.claude/claude_desktop_config.json`):
-```json
-{
-  "mcpServers": {
-    "tunr": {
-      "command": "tunr",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-**Cursor** (`.cursor/mcp.json`):
-```json
-{
-  "mcpServers": {
-    "tunr": { "command": "tunr", "args": ["mcp"] }
-  }
-}
-```
+</details>
 
 ---
 
 ## Configuration (`.tunr.json`)
-
-Create a workspace config file:
 
 ```bash
 tunr config init
@@ -630,152 +488,110 @@ tunr config init
 
 ## Architecture
 
-tunr is a single Go binary that:
-
-1. Starts a local HTTPS proxy with an embedded inspector
-2. Opens a WebSocket connection to the **tunr relay** (edge server)
-3. The relay issues a `*.tunr.sh` subdomain and forwards traffic
-4. HTTPS terminates at the relay; CLI ↔ dev-server traffic runs over the same WebSocket stream
-
 ```
-Browser → relay.tunr.sh → [WebSocket] → tunr binary → localhost:PORT
+Browser ──▶ relay.tunr.sh ──┬── [WebSocket] ──▶ tunr CLI ──▶ localhost:PORT   (tunnel)
+                            │
+                            └── control plane ──▶ tunr-runner ──▶ gVisor sandbox   (cloud app)
+                                     │
+                                Postgres + route cache
 ```
 
-**Protocol support:** tunr tunnels **HTTP/HTTPS + WebSocket**, **TCP**, **UDP**, and **TLS** (end-to-end encrypted) traffic. UDP datagrams are forwarded through the WebSocket control channel. TLS tunnels use SNI-based routing for zero-knowledge passthrough.
+**Tunnels.** The CLI starts a local proxy with an embedded inspector and opens
+one WebSocket to the relay. The relay issues a `*.tunr.sh` subdomain and
+terminates HTTPS. HTTP, WebSocket, TCP, UDP and TLS all multiplex over that
+single connection — a typed message discriminator routes them.
 
-**Multi-region:** The relay supports region selection via the `--region` flag. Currently available regions: `ams` (Amsterdam, EU), `sea` (Seattle, US West), `sin` (Singapore, Asia). The balancer infrastructure (`relay/internal/relay/balancer.go`) manages cross-region routing metadata.
+**Cloud.** `tunr deploy` uploads a tarball to the control plane, which hands it
+to `tunr-runner`. The runner builds with Nixpacks and runs the result in a
+gVisor sandbox with cgroup quotas. The relay routes the subdomain straight at
+the container, waking it if it's asleep.
 
-**Wildcards:** The relay is configured with `*.tunr.sh` wildcard routing through Fly.io / Caddy; wildcard domain support for custom domains is available.
+**Scale to zero.** Apps move `HOT → WARM → STOPPED` on an idle timer. WARM is a
+cgroup memory reclaim followed by a pause, which cuts real memory cost by ~55%
+while keeping wake latency around 150 ms. Health-check probes are answered at
+the edge so a monitored app can still fall asleep.
 
-**Self-Hosting:** The relay can be self-hosted using the included `docker-compose.yml` (Relay + Caddy + Postgres). See [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) for the complete guide.
+**Observability.** Prometheus metrics at `/metrics`, K8s probes at `/healthz`
+and `/readyz` on the inspector port.
 
-**Docker:** The CLI is available as a ~15MB Alpine Docker image. Build with `docker build -t tunr .` or pull from `ghcr.io/ahmetvural79/tunr`.
-
-**Observability:** The CLI exposes Prometheus metrics at `/metrics` and K8s-ready health probes at `/healthz` and `/readyz` on the inspector port (19842).
+**Self-hosting.** `docker-compose.yml` runs the tunnel stack (relay + Caddy +
+Postgres); `docker-compose.runner.yml` adds the cloud runner. Point the CLI at
+it with `--relay https://tunnel.yourcompany.com` or `TUNR_RELAY_URL`. See
+[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md), and [docs/SCALING.md](docs/SCALING.md)
+for capacity planning.
 
 ---
 
 ## Security
 
-tunr takes security seriously for an open-source CLI tool:
+- Auth tokens live in the **OS keychain**, never in a dotfile
+- All relay traffic over **TLS 1.3**; `tunr tls` is end-to-end, the relay can't read it
+- Cloud apps run under **gVisor**, not bare containers
+- `.env` files are excluded from deploy uploads by default
+- No telemetry, no analytics, no phone-home
+- Supply chain: `go mod verify` + `govulncheck` in CI, cosign-signed checksums
 
-- Auth tokens stored in **OS keychain** (not plaintext files)
-- All relay traffic over **TLS 1.3**
-- No telemetry, no analytics, no phone-home by default
-- Supply chain integrity via `go mod verify` and govulncheck in CI
-
-Found a vulnerability? **Do not open a public issue.** See [SECURITY.md](SECURITY.md).
-
----
-
-## How tunr Compares
-
-### tunr vs ngrok
-
-Both tools share localhost, but tunr focuses on developer experience and vibecoding workflows:
-
-| | tunr | ngrok (Personal) |
-|--|------|------------------|
-| Monthly Price | 💸 Free / affordable | 💸 $10/month |
-| Bandwidth | 📦 Unlimited | 📦 5 GB/month cap |
-| Vibecoder Demo Features | ❄️🛡️💬✅ Exclusive | ❌ |
-| IP Whitelisting | ✅ | ❌ (Enterprise only) |
-| Bearer Token Auth | ✅ | ❌ |
-| Header Modification | ✅ | ❌ |
-| QR Code Tunnel Sharing | ✅ | ❌ |
-| MCP / AI Integration | ✅ | ❌ |
-| Open Source CLI | ✅ | ❌ |
-
-[Compare Pinggy vs ngrok](https://pinggy.io/compare/pinggy-vs-ngrok/)
-
-### tunr vs Cloudflare Tunnel
-
-| | tunr | Cloudflare Tunnel |
-|--|------|-------------------|
-| Setup complexity | ⚡ 1 command (`tunr share -p 3000`) | ⚠️ Requires Cloudflare account + DNS config |
-| Persistent subdomains | ✅ (tunr.sh managed) | ❌ Must own a domain first |
-| Vibecoder Demo Features | ✅ Exclusive | ❌ |
-| Request Inspection | ✅ Live inspector + replay | ❌ |
-| Bandwidth limits | 📦 Unlimited | ⚠️ 100 MB max upload |
-| IP Whitelisting | ✅ CLI-level (no dashboard) | ❌ |
-| Local dashboard | ✅ Built-in | ❌ |
-
-[Compare Pinggy vs Cloudflare Tunnel](https://pinggy.io/compare/pinggy-vs-cloudflare-tunnel/)
-
-### tunr vs LocalXpose
-
-| | tunr | LocalXpose (Pro) |
-|--|------|------------------|
-| Monthly Price | 💸 Free / affordable | 💸 $8/month |
-| Bearer Token Auth | ✅ | ❌ |
-| MCP Integration | ✅ | ❌ |
-| Vibecoder Demo Features | ✅ Exclusive | ❌ |
-| Header Modification | ✅ | ❌ |
-| Open Source | ✅ | ❌ |
-
-[Compare Pinggy vs LocalXpose](https://pinggy.io/compare/pinggy-vs-localxpose/)
-
-### tunr vs LocalTunnel
-
-LocalTunnel is free but minimal — tunr adds a full feature set on top of the same zero-cost model:
-
-| | tunr | LocalTunnel |
-|--|------|-------------|
-| HTTPS tunnel | ✅ | ✅ |
-| WebSocket / HMR | ✅ | ❌ |
-| Custom domains | ✅ | ❌ |
-| Persistent subdomains | ✅ | ❌ |
-| IP Whitelisting | ✅ | ❌ |
-| Bearer Token Auth | ✅ | ❌ |
-| Request Inspector | ✅ | ❌ |
-| Password Protection | ✅ | ❌ |
-| Demo / Freeze / Widget | ✅ Exclusive | ❌ |
-
-[Compare Pinggy vs LocalTunnel](https://pinggy.io/compare/pinggy-vs-localtunnel/)
+Found a vulnerability? **Don't open a public issue** — see [SECURITY.md](SECURITY.md).
 
 ---
 
 ## Roadmap
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| TCP tunnel support | ✅ Released | Database, SSH, game server tunnels |
-| UDP tunnel support | ✅ Released (v0.4.0) | DNS, game servers, real-time apps |
-| TLS tunnel (E2E encryption) | ✅ Released (v0.4.0) | Zero-trust, relay can't read traffic |
-| Python / Node.js SDKs | ✅ Released | Programmatic tunnel creation via `pip install tunr` / `npm i @tunr/cli` |
-| Multi-region relay | ✅ Released | `--region` flag with `ams`, `sea`, `sin` regions |
-| Docker / Self-Hosting | ✅ Released (v0.4.0) | `docker-compose.yml` for full stack; ~15MB CLI image |
-| Prometheus Metrics | ✅ Released (v0.4.0) | `/metrics`, `/healthz`, `/readyz` |
-| Service Install | ✅ Released (v0.4.0) | `tunr service install` (systemd / launchd) |
-| Multi-Tunnel Config | ✅ Released (v0.4.0) | `tunr up` / `tunr down` from `.tunr.json` |
-| Corporate Proxy | ✅ Released (v0.4.0) | `--proxy` flag + `HTTP_PROXY` / `HTTPS_PROXY` env |
-| Wildcard custom domains | ✅ Released (v0.4.0) | `*.yourdomain.com` routing via self-hosted relay |
-| GUI desktop app | 📋 Backlog | Windows, macOS, Linux |
-| Webhook verification | 📋 Backlog | Signature validation for incoming webhooks |
-| Team collaboration | 📋 Backlog | Shared tunnels, member management |
-| Remote device management | 📋 Backlog | Manage tunnels on IoT / remote machines |
-| Persistent TCP/UDP ports | 📋 Backlog | Fixed-port tunnel endpoints |
-| Automatic Let's Encrypt certs | 📋 Backlog | Per-tunnel TLS certificate provisioning |
+Honest status. "Preview" means it works but the edges are sharp; "planned"
+means there is no code yet.
+
+| | Status |
+|---|---|
+| HTTP/WS, TCP, UDP, TLS tunnels | ✅ Stable |
+| Multi-region relay (`ams`/`sea`/`sin`) | ✅ Stable |
+| Demo features (freeze, demo, widget, auto-login) | ✅ Stable |
+| Access control (password, token, IP, TTL) | ✅ Stable |
+| Inspector + replay, Prometheus, service install | ✅ Stable |
+| Python / Node SDKs | ✅ Stable |
+| Self-hosted tunnel relay | ✅ Stable |
+| `tunr deploy` + `tunr apps` + logs | 🚧 Preview |
+| MCP cloud tools (`tunr_deploy`, `tunr_app_logs`, …) | 🚧 Preview |
+| Scale-to-zero (sleep/wake) | 🚧 Preview |
+| Self-hosted cloud runner | 🚧 Preview |
+| **Role-based sharing** (viewer/commenter/editor, `--org acme.com`) | 📋 Planned |
+| Per-app SQLite + snapshots | 📋 Planned |
+| `tunr rollback` (code *and* data) | 📋 Planned |
+| Persistent TCP/UDP ports | 📋 Backlog |
+| GUI desktop app | 📋 Backlog |
+
+Comparing tunr's tunnel against ngrok, Cloudflare Tunnel, LocalXpose and
+localtunnel: [docs/compare-tunnels.md](docs/compare-tunnels.md).
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](docs/CONTRIBUTING.md) first.
+Contributions are welcome — read [CONTRIBUTING.md](docs/CONTRIBUTING.md) first.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feat/my-feature`)
-3. Make your changes
-4. Ensure CI passes (`go test ./...` + `golangci-lint run`)
-5. Open a pull request
+```bash
+make check      # vet + lint + test + govulncheck
+make pre-push   # the above, plus a build
+```
+
+The relay is a separate Go module and isn't covered by the Makefile:
+
+```bash
+cd relay && go build ./cmd/server && go test ./...
+```
 
 ---
 
 ## License
 
-PolyForm Shield 1.0.0 — see [LICENSE](LICENSE).
+This repository is **dual-licensed by directory**:
 
-You are free to use, modify, and distribute this software. The only restriction is that you may not use it to build a competing product or service. See the license for full terms.
+| Path | Licence | |
+|---|---|---|
+| `cmd/`, `internal/`, `sdk/` — the CLI and SDKs | [Apache-2.0](LICENSE) | OSI-approved open source. Use it, fork it, ship it commercially. |
+| `relay/` — relay, control plane, runner | [PolyForm Shield 1.0.0](relay/LICENSE) | Source-available, **not** open source. Read it, modify it, run your own instance — but don't use it to compete with tunr. |
+
+Running the whole stack yourself, for yourself or inside your company, is
+allowed under both. See [NOTICE](NOTICE) for the exact boundary.
 
 ---
 

@@ -10,6 +10,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,7 +177,53 @@ func newAppsCmd() *cobra.Command {
 			return deleteApp(cmd, args[0])
 		},
 	})
+
+	var follow bool
+	var tail int
+	logsCmd := &cobra.Command{
+		Use:   "logs <name>",
+		Short: "Stream a cloud app's runtime logs",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return appLogs(cmd, args[0], tail, follow)
+		},
+	}
+	logsCmd.Flags().BoolVarP(&follow, "follow", "f", false, "Keep the stream open and print new lines as they arrive")
+	logsCmd.Flags().IntVar(&tail, "tail", 200, "Number of past lines to show (0 = all)")
+	cmd.AddCommand(logsCmd)
+
 	return cmd
+}
+
+// appLogs streams /v1/apps/logs to stdout. The control plane sends plain text,
+// so this is a straight copy — no framing to get wrong.
+func appLogs(cmd *cobra.Command, name string, tail int, follow bool) error {
+	token, err := auth.GetToken()
+	if err != nil || token == "" {
+		return fmt.Errorf("not logged in — run: tunr login")
+	}
+	u := fmt.Sprintf("%s/v1/apps/logs?name=%s&tail=%d", relayURL(), url.QueryEscape(name), tail)
+	if follow {
+		u += "&follow=1"
+	}
+	req, err := http.NewRequestWithContext(cmd.Context(), http.MethodGet, u, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	// No client timeout: --follow is meant to stay open until Ctrl-C.
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("%s", strings.TrimSpace(string(b)))
+	}
+	_, err = io.Copy(os.Stdout, resp.Body)
+	return err
 }
 
 func listApps(cmd *cobra.Command) error {

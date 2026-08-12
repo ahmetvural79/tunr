@@ -132,18 +132,20 @@ release:
   
   footer: |
     ## How to Install?
-    
+
     ```bash
-    # macOS (Homebrew)
+    # macOS / Linux (Homebrew)
     brew install ahmetvural79/tap/tunr
-    
-    # Linux / macOS (curl)
-    curl -fsSL https://tunr.sh/install | sh
-    
-    # npm (For Node.js projects)
-    npx tunr@latest share --port 3000
+
+    # macOS / Linux (install script)
+    curl -fsSL https://raw.githubusercontent.com/ahmetvural79/tunr/main/install.sh | sh
+
+    # Go
+    go install github.com/ahmetvural79/tunr/cmd/tunr@latest
     ```
-    
+
+    SDKs: `pip install tunr` · `npm install @tunr/cli`
+
     For more: https://tunr.sh/docs
 
 # GoReleaser v2: brews deprecated in favor of homebrew_casks (since v2.10)

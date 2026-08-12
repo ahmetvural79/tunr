@@ -28,6 +28,7 @@ package relay
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -48,6 +49,10 @@ type NodeClient interface {
 	Delete(ctx context.Context, appID string) error
 	// Status reports the app's actual state ("running"|"sleeping"|"stopped").
 	Status(ctx context.Context, appID string) (string, error)
+	// Logs streams the app's output. Unlike every other call here it is not a
+	// lifecycle operation and must not carry a lifecycle deadline: with
+	// follow=true it is meant to stay open until the caller's ctx ends.
+	Logs(ctx context.Context, appID string, tail int, follow bool) (io.ReadCloser, error)
 	// HostSample reports the node's capacity and pressure — the input to both
 	// the sweeper's safety valve and (later) the placement score.
 	HostSample(ctx context.Context) (HostSample, error)
@@ -190,6 +195,15 @@ func (s *Scheduler) Status(ctx context.Context, appID string) (string, error) {
 		return "", err
 	}
 	return c.Status(ctx, appID)
+}
+
+// Logs streams an app's output from whichever node holds it.
+func (s *Scheduler) Logs(ctx context.Context, appID string, tail int, follow bool) (io.ReadCloser, error) {
+	c, err := s.ClientFor(ctx, appID)
+	if err != nil {
+		return nil, err
+	}
+	return c.Logs(ctx, appID, tail, follow)
 }
 
 // ReconcileStates corrects the relay's beliefs against what the nodes report.

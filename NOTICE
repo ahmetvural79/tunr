@@ -1,0 +1,37 @@
+tunr
+Copyright 2026 tunr (https://tunr.sh)
+
+This repository contains two separately licensed parts. Which licence applies
+depends on which directory the file is in.
+
+────────────────────────────────────────────────────────────────────────────
+Apache License 2.0  —  the client
+────────────────────────────────────────────────────────────────────────────
+
+  ./cmd/       the tunr CLI entry point and its subcommands
+  ./internal/  all client-side logic (tunnels, proxy, inspector, MCP, daemon)
+  ./sdk/       the Python, Node.js, Go and JS wrappers
+
+  Full text: ./LICENSE
+
+  This is OSI-approved open source. You may use, modify, redistribute and
+  build products on it, including commercially, subject to Apache-2.0's
+  attribution and patent terms.
+
+────────────────────────────────────────────────────────────────────────────
+PolyForm Shield 1.0.0  —  the server
+────────────────────────────────────────────────────────────────────────────
+
+  ./relay/     the relay server, control plane and tunr-runner
+
+  Full text: ./relay/LICENSE
+
+  This is source-available, NOT open source. You may read it, modify it and
+  run your own instance — including inside your company. You may not use it
+  to offer a product or service that competes with tunr.
+
+────────────────────────────────────────────────────────────────────────────
+
+Why the split: the CLI is what you install and depend on, so it carries no
+strings. The relay is the business. Self-hosting the whole stack for your own
+use is explicitly allowed under both licences — see docs/SELF_HOSTING.md.

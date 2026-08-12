@@ -89,3 +89,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Pivot planning material — reference only, not part of the module.
+# (ref/tunrpivot/*.go are stray copies whose package names collide, which
+#  breaks `go build ./...` and `go test ./...` — the release gate.)
+ref/

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/ahmetvural79/tunr/internal/inspector"
 	"github.com/ahmetvural79/tunr/internal/logger"
@@ -63,6 +65,9 @@ type Server struct {
 	startTunnel TunnelStarter
 	stopTunnel  TunnelStopper
 	listApps    AppsLister
+	deployApp   AppDeployer
+	appLogs     AppLogReader
+	deleteApp   AppDeleter
 	in          io.Reader
 	out         io.Writer
 }
@@ -123,6 +128,55 @@ type AppsLister func() ([]AppInfo, error)
 // WithAppsLister wires the tunr_list_apps tool to the cloud control plane.
 func (s *Server) WithAppsLister(fn AppsLister) *Server {
 	s.listApps = fn
+	return s
+}
+
+// DeployRequest is what an agent asks tunr to ship.
+type DeployRequest struct {
+	Dir  string            // project directory (default: the agent's cwd)
+	Name string            // app name / subdomain (default: directory name)
+	Port int               // port the app listens on inside the container
+	Env  map[string]string // build/runtime environment
+}
+
+// DeployResult is the outcome of a deploy: a live URL plus the tail of the
+// build output, so a failing build is debuggable without a second round-trip.
+type DeployResult struct {
+	Name string
+	URL  string
+	Log  []string
+}
+
+// AppDeployer builds and hosts a directory on the tunr cloud.
+//
+// This is the tool that makes "ship this" mean something to an agent. Without
+// it the catalogue contains only tunr_share, and an agent asked to deploy will
+// quietly open a temporary tunnel instead — the right-looking answer to the
+// wrong question.
+type AppDeployer func(ctx context.Context, req DeployRequest) (DeployResult, error)
+
+// AppLogReader returns the last n lines of a cloud app's output.
+// Never follows: an MCP tool call must terminate.
+type AppLogReader func(ctx context.Context, name string, tail int) (string, error)
+
+// AppDeleter removes a cloud app and its route.
+type AppDeleter func(ctx context.Context, name string) error
+
+// WithAppDeployer wires the tunr_deploy tool to the cloud control plane.
+func (s *Server) WithAppDeployer(fn AppDeployer) *Server {
+	s.deployApp = fn
+	return s
+}
+
+// WithAppLogReader wires the tunr_app_logs tool.
+func (s *Server) WithAppLogReader(fn AppLogReader) *Server {
+	s.appLogs = fn
+	return s
+}
+
+// WithAppDeleter wires the tunr_delete_app tool.
+func (s *Server) WithAppDeleter(fn AppDeleter) *Server {
+	s.deleteApp = fn
 	return s
 }
 
@@ -205,8 +259,77 @@ func (s *Server) handle(req *JSONRPCRequest) {
 func (s *Server) toolList() []map[string]interface{} {
 	return []map[string]interface{}{
 		{
-			"name":        "tunr_share",
-			"description": "Expose a local port as a public HTTPS URL. The tunnel is ready in under 3 seconds. Use this for client demos, webhook testing, or sharing AI apps.",
+			"name": "tunr_deploy",
+			"description": "Build and host a project on the tunr cloud, then return its live URL. " +
+				"Use this when the user says deploy, ship, host, publish, or \"put this online\" — " +
+				"the app is built with Nixpacks (no Dockerfile needed), keeps running after the " +
+				"laptop closes, sleeps when idle and wakes on the next request. " +
+				"For a temporary preview of an already-running localhost server, use tunr_share instead. " +
+				"Requires `tunr login`.",
+			"inputSchema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"dir": map[string]interface{}{
+						"type":        "string",
+						"description": "Project directory to deploy (default: current directory)",
+					},
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "App name — becomes the subdomain, e.g. \"sprint\" → https://sprint.tunr.sh (default: directory name)",
+					},
+					"port": map[string]interface{}{
+						"type":        "integer",
+						"description": "Port the app listens on inside the container (default: 8080)",
+					},
+					"env": map[string]interface{}{
+						"type":        "object",
+						"description": "Environment variables as a flat key/value object. Local .env files are never uploaded — pass secrets here.",
+					},
+				},
+			},
+		},
+		{
+			"name": "tunr_app_logs",
+			"description": "Read the recent build and runtime logs of a deployed cloud app. " +
+				"Use this to debug an app that returns errors or failed to start.",
+			"inputSchema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "App name (from tunr_list_apps)",
+					},
+					"tail": map[string]interface{}{
+						"type":        "integer",
+						"description": "Number of lines to return (default: 200, max: 1000)",
+						"minimum":     1,
+						"maximum":     1000,
+					},
+				},
+				"required": []string{"name"},
+			},
+		},
+		{
+			"name": "tunr_delete_app",
+			"description": "Permanently delete a deployed cloud app and free its subdomain. " +
+				"This cannot be undone — confirm with the user before calling it.",
+			"inputSchema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "App name to delete (from tunr_list_apps)",
+					},
+				},
+				"required": []string{"name"},
+			},
+		},
+		{
+			"name": "tunr_share",
+			"description": "Expose an already-running local port as a public HTTPS URL, ready in under 3 seconds. " +
+				"Use this for webhook testing, client demos, or showing work-in-progress from localhost. " +
+				"This is a temporary tunnel to this machine — it dies when the CLI stops. " +
+				"To host something that keeps running, use tunr_deploy instead.",
 			"inputSchema": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -307,6 +430,12 @@ func (s *Server) handleToolCall(req *JSONRPCRequest) {
 	}
 
 	switch params.Name {
+	case "tunr_deploy":
+		s.toolDeploy(req.ID, params.Arguments)
+	case "tunr_app_logs":
+		s.toolAppLogs(req.ID, params.Arguments)
+	case "tunr_delete_app":
+		s.toolDeleteApp(req.ID, params.Arguments)
 	case "tunr_share":
 		s.toolShare(req.ID, params.Arguments)
 	case "tunr_status":
@@ -474,6 +603,124 @@ func (s *Server) toolStop(id interface{}, args json.RawMessage) {
 	}
 
 	s.sendToolResult(id, fmt.Sprintf("✅ Tunnel `%s` stopped.", input.TunnelID))
+}
+
+// ─── Cloud Tool Implementations ───────────────────────────────────────────────
+
+func (s *Server) toolDeploy(id interface{}, args json.RawMessage) {
+	var input struct {
+		Dir  string            `json:"dir"`
+		Name string            `json:"name"`
+		Port int               `json:"port"`
+		Env  map[string]string `json:"env"`
+	}
+	// Every field is optional — an agent calling tunr_deploy with no arguments
+	// means "ship what's here", which is the most common phrasing.
+	if len(args) > 0 {
+		if err := json.Unmarshal(args, &input); err != nil {
+			s.sendToolError(id, "invalid arguments: "+err.Error())
+			return
+		}
+	}
+
+	if s.deployApp == nil {
+		s.sendToolError(id, "cloud deploy is not available in this context")
+		return
+	}
+
+	// Builds run for minutes; the deadline is generous but finite so a wedged
+	// builder surfaces as a tool error instead of a hung agent.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
+	res, err := s.deployApp(ctx, DeployRequest{
+		Dir:  input.Dir,
+		Name: input.Name,
+		Port: input.Port,
+		Env:  input.Env,
+	})
+	if err != nil {
+		msg := fmt.Sprintf("Deploy failed: %v", err)
+		if len(res.Log) > 0 {
+			msg += "\n\nLast build output:\n```\n" + strings.Join(tailLines(res.Log, 30), "\n") + "\n```"
+		}
+		s.sendToolError(id, msg)
+		return
+	}
+
+	out := fmt.Sprintf(
+		"✅ Deployed.\n\n**Live URL:** %s\n**App:** `%s`\n\nThe app sleeps when idle and wakes on the next request. "+
+			"Use `tunr_app_logs` with name `%s` to read its output.",
+		res.URL, res.Name, res.Name,
+	)
+	s.sendToolResult(id, out)
+}
+
+func (s *Server) toolAppLogs(id interface{}, args json.RawMessage) {
+	var input struct {
+		Name string `json:"name"`
+		Tail int    `json:"tail"`
+	}
+	if err := json.Unmarshal(args, &input); err != nil || input.Name == "" {
+		s.sendToolError(id, "name parameter is required (get it from tunr_list_apps)")
+		return
+	}
+	if input.Tail <= 0 {
+		input.Tail = 200
+	}
+	if input.Tail > 1000 {
+		input.Tail = 1000
+	}
+
+	if s.appLogs == nil {
+		s.sendToolError(id, "cloud apps are not available in this context")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	body, err := s.appLogs(ctx, input.Name, input.Tail)
+	if err != nil {
+		s.sendToolError(id, err.Error())
+		return
+	}
+	if strings.TrimSpace(body) == "" {
+		s.sendToolResult(id, fmt.Sprintf("No log output for `%s` yet.", input.Name))
+		return
+	}
+	s.sendToolResult(id, fmt.Sprintf("**Logs for `%s`:**\n\n```\n%s\n```", input.Name, strings.TrimRight(body, "\n")))
+}
+
+func (s *Server) toolDeleteApp(id interface{}, args json.RawMessage) {
+	var input struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(args, &input); err != nil || input.Name == "" {
+		s.sendToolError(id, "name parameter is required")
+		return
+	}
+	if s.deleteApp == nil {
+		s.sendToolError(id, "cloud apps are not available in this context")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	if err := s.deleteApp(ctx, input.Name); err != nil {
+		s.sendToolError(id, err.Error())
+		return
+	}
+	s.sendToolResult(id, fmt.Sprintf("✅ Deleted `%s`. Its subdomain is free again.", input.Name))
+}
+
+// tailLines returns the last n entries of lines.
+func tailLines(lines []string, n int) []string {
+	if len(lines) <= n {
+		return lines
+	}
+	return lines[len(lines)-n:]
 }
 
 // ─── Response Helpers ─────────────────────────────────────────────────────────

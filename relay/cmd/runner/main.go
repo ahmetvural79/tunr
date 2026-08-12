@@ -11,6 +11,7 @@
 //	POST   /v1/apps/{id}/stop
 //	DELETE /v1/apps/{id}
 //	GET    /v1/apps/{id}/status  -> {"status":"running|sleeping|stopped"}
+//	GET    /v1/apps/{id}/logs    ?tail=200&follow=1 -> text/plain stream
 //
 // All requests authenticate with a shared bearer secret (RUNNER_SECRET).
 // Build = Nixpacks (or Dockerfile); Run = runner.DockerDriver (gVisor, quotas).
@@ -490,6 +491,15 @@ func handleApp(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "app id required", http.StatusBadRequest)
 		return
 	}
+
+	// Logs is handled before the lifecycle deadline is applied: with ?follow=1
+	// the stream is meant to stay open, so wrapping it in a 30s timeout would
+	// cut every follower off mid-line. The client's disconnect ends it instead.
+	if r.Method == http.MethodGet && action == "logs" {
+		handleLogs(w, r, appID)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
@@ -525,6 +535,51 @@ func handleApp(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"status": string(st)})
 	default:
 		http.Error(w, "unknown action", http.StatusNotFound)
+	}
+}
+
+// handleLogs streams a container's output as plain text.
+//
+//	GET /v1/apps/{id}/logs?tail=200&follow=1
+//
+// Plain text, not SSE: the control plane re-frames it for the CLI, and keeping
+// the node's surface dumb means a log line containing "data:" can't be
+// mistaken for an event.
+func handleLogs(w http.ResponseWriter, r *http.Request, appID string) {
+	tail := 200
+	if v := r.URL.Query().Get("tail"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			tail = n
+		}
+	}
+	follow := r.URL.Query().Get("follow") == "1"
+
+	rc, err := drv.Logs(r.Context(), appID, tail, follow)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rc.Close()
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+
+	flusher, _ := w.(http.Flusher)
+	buf := make([]byte, 32<<10)
+	for {
+		n, rerr := rc.Read(buf)
+		if n > 0 {
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				return // client hung up
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		if rerr != nil {
+			return
+		}
 	}
 }
 

@@ -2,7 +2,18 @@ package main
 
 import "os"
 
+// relayFlag holds the value of the global --relay flag (see root.go).
+//
+// Self-hosting used to be documented as `tunr share --port 3000 --relay <url>`
+// while the only real knob was the TUNR_RELAY_URL environment variable, so the
+// documented command failed with "unknown flag". The flag now exists and takes
+// precedence over the env var, which stays supported for CI and daemons.
+var relayFlag string
+
 func relayURL() string {
+	if relayFlag != "" {
+		return relayFlag
+	}
 	if v := os.Getenv("TUNR_RELAY_URL"); v != "" {
 		return v
 	}
