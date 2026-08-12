@@ -597,7 +597,7 @@ allowed under both. See [NOTICE](NOTICE) for the exact boundary.
 
 <div align="center">
 
-**[tunr.sh](https://tunr.sh)** · [Docs](https://tunr.sh/docs) · [Discord](https://discord.gg/tunr) · [Twitter/X](https://x.com/vural_met)
+**[tunr.sh](https://tunr.sh)** · [Docs](https://tunr.sh/docs.html) · [Discord](https://discord.gg/tunr) · [Twitter/X](https://x.com/vural_met)
 
 Built with 💜 in Go
 
